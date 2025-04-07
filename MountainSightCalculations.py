@@ -72,4 +72,4 @@ def MountainSightCheck(a, b, mount):
     
     return True
 
-print(MountainSightCheck((0, 0, 0), (100, 100, 20), (10, 0, 20, 10)))
+# example: MountainSightCheck((0, 0, 0), (100, 100, 20), (10, 0, 20, 10)) = False
