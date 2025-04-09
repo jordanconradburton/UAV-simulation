@@ -7,7 +7,7 @@ def calculate_distance(drone_pos, sensor_pos):
 def calculate_signal_power(Ptx, distance, frequency_hz, Gt=0, Gr=0):
     if distance <= 0 or frequency_hz <= 0:
         return None
-    return Ptx + Gt + Gr - 20 * math.log10(distance) - 20 * math.log10(frequency_hz) + 147
+    return Ptx + Gt + Gr - 20 * math.log10(distance) - 20 * math.log10(frequency_hz) - 147
 
 def calculate_thermal_noise(bw_hz, nf=5):
     if bw_hz <= 0:

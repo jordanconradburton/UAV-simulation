@@ -95,7 +95,7 @@ class DatabaseManager:
         
         -- Table: Drone Experiment Time (Drone Trajectory)
         CREATE TABLE IF NOT EXISTS drone_exp_time (
-            trajectory_id INTEGER,
+            id INTEGER PRIMARY KEY,
             drone_id INTEGER,
             exp_id INTEGER,
             time TIMESTAMP,
@@ -106,7 +106,6 @@ class DatabaseManager:
             end_x REAL,
             end_y REAL,
             end_z REAL,
-            PRIMARY KEY trajectory_id,
             FOREIGN KEY (drone_id) REFERENCES drones(id),
             FOREIGN KEY (exp_id) REFERENCES experiments(id)
         );
@@ -286,11 +285,11 @@ class DatabaseManager:
         self.cursor.execute("SELECT * FROM drone_exp_time")
         return self.cursor.fetchall()
     
-    def set_drone_exp_time(self, drone_id, exp_id, time, speed, start_x, start_y, start_z, end_x, end_y, end_z):
+    def set_drone_exp_time(self, id, drone_id, exp_id, time, speed, start_x, start_y, start_z, end_x, end_y, end_z):
         self.cursor.execute("""
-            INSERT OR REPLACE INTO drone_exp_time (drone_id, exp_id, time, speed, start_x, start_y, start_z, end_x, end_y, end_z)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (drone_id, exp_id, time, speed, start_x, start_y, start_z, end_x, end_y, end_z))
+            INSERT OR REPLACE INTO drone_exp_time (id, drone_id, exp_id, time, speed, start_x, start_y, start_z, end_x, end_y, end_z)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (id, drone_id, exp_id, time, speed, start_x, start_y, start_z, end_x, end_y, end_z))
         self.conn.commit()
     
     # Getters and Setters for Experiments

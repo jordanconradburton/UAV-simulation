@@ -35,7 +35,7 @@ def second_simulation(num_drones=2, num_sensors=3, region_size=(5000, 5000)):
     num_steps = 60
     drone_freq_mhz = 2400
 
-    setup_environment(db, exp_id, num_sensors=num_sensors, region_size=region_size)
+    setup_environment(db, exp_id, num_sensors=num_sensors, region_size=region_size, test_type="mixed")
     drone_trajectories = generate_mixed_trajectories(
         exp_id=exp_id,
         num_drones=num_drones,
@@ -56,3 +56,4 @@ def second_simulation(num_drones=2, num_sensors=3, region_size=(5000, 5000)):
 if __name__ == '__main__':
     # first_simulation()
     second_simulation()
+    db.conn.close()
