@@ -149,7 +149,7 @@ class DatabaseManager:
             id INTEGER PRIMARY KEY,
             x REAL,
             y REAL,
-            radius REAL,
+            side_length REAL,
             height REAL
         );
 
@@ -309,7 +309,7 @@ class DatabaseManager:
 
     def get_mountains_by_experiment(self, exp_id):
         query = """
-        SELECT m.id, m.x, m.y, m.radius, m.height
+        SELECT m.id, m.x, m.y, m.side_length, m.height
         FROM mountains m
         JOIN topo_mountains tm ON m.id = tm.mountain_id
         JOIN exp_env ee ON tm.topography_id = ee.topography_id

@@ -2,6 +2,7 @@ import matplotlib
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 from matplotlib.patches import RegularPolygon
+from datetime import datetime
 
 matplotlib.use("TkAgg")
 
@@ -62,6 +63,41 @@ def setup_drones(ax, drone_trajectories, drone_fixed_colors):
     return drone_dots, drone_trails, drone_text
 
 
+def build_detection_map(db, exp_id):
+    """
+    Returns a dict mapping each datetime to a list of (sensor_id, drone_id)
+    pairs for every detection at that moment.
+    """
+    # 1) Map sensor_up_id → (sensor_id, timestamp_datetime)
+    sensor_up_rows = db.get_sensor_up_time_by_experiment(exp_id)
+    sensor_up_map = {}
+    for row in sensor_up_rows:
+        # row: (exp_id, sensor_id, sensor_up_id, start_time, ...)
+        sup_id    = row[2]
+        sensor_id = row[1]
+        ts_raw    = row[3]
+        # Parse the string into a datetime
+        if isinstance(ts_raw, str):
+            try:
+                ts = datetime.fromisoformat(ts_raw)
+            except ValueError:
+                ts = datetime.strptime(ts_raw, "%Y-%m-%d %H:%M:%S")
+        else:
+            ts = ts_raw
+        sensor_up_map[sup_id] = (sensor_id, ts)
+
+    # 2) Build timestamp → [(sensor_id, drone_id), …]
+    detection_map = {}
+    for det in db.get_sensor_detections():
+        # det: (detection_id, sensor_up_id, drone_id, ...)
+        _, sup_id, drone_id, _, _ = det
+        if sup_id in sensor_up_map:
+            sensor_id, ts = sensor_up_map[sup_id]
+            detection_map.setdefault(ts, []).append((sensor_id, drone_id))
+
+    return detection_map
+
+
 def visualize_simulation(db, exp_id, drone_trajectories, region=(1000, 1000)):
     plt.ion()  # Enable interactive mode for PyCharm animations
     fig, ax = plt.subplots()
@@ -72,19 +108,28 @@ def visualize_simulation(db, exp_id, drone_trajectories, region=(1000, 1000)):
     # Set up sensors.
     sensors = db.get_sensors_by_exp_id(exp_id)
     sensor_dots, sensor_text, sensor_id_text = setup_sensors(ax, sensors)
+    sensors_dict = { s[1]:(s[3],s[4],s[5]) for s in sensors }
 
     # Set up mountains.
     mountain_markers = setup_mountains(ax, db, exp_id)
 
     # Set up drones.
-    drone_fixed_colors = ['red', 'lime']
+    cmap = plt.cm.get_cmap('tab10')
+    n_drones = len(drone_trajectories)
+    drone_fixed_colors = [cmap(i) for i in range(n_drones)]
     drone_dots, drone_trails, drone_text = setup_drones(ax, drone_trajectories, drone_fixed_colors)
+    drones_dict = { did: traj for did,traj in drone_trajectories.items() }
 
-    # Store persistent detection markers (triangles) and detection lines
-    detection_markers = []  # List of all detection markers
     detection_lines = []  # List of detection lines
+    detection_map = build_detection_map(db, exp_id)
 
     def update(frame):
+
+        #remove old detection lines
+        for ln in detection_lines:
+            ln.remove()
+        detection_lines.clear()
+
         all_artists = []
 
         for drone_id, traj in drone_trajectories.items():
@@ -104,11 +149,22 @@ def visualize_simulation(db, exp_id, drone_trajectories, region=(1000, 1000)):
 
             all_artists.extend([drone_dots[drone_id], drone_trails[drone_id], drone_text[drone_id]])
 
+        current_ts = next(traj[frame][3]
+                          for traj in drone_trajectories.values()
+                          if frame < len(traj))
+
+        for sensor_id, drone_id in detection_map.get(current_ts, []):
+            sx, sy, _ = sensors_dict[sensor_id]
+            dx, dy, _ = drones_dict[drone_id][frame][5:8]
+            ln, = ax.plot([sx, dx], [sy, dy], '--', lw=1,
+                          color='gray', alpha=0.7)
+            detection_lines.append(ln)
+            all_artists.append(ln)
+
         # Add sensor visualizations if needed
         all_artists.extend(sensor_dots.values())
         all_artists.extend(sensor_text.values())
         all_artists.extend(mountain_markers)
-        all_artists.extend(detection_markers)
         all_artists.extend(detection_lines)
 
         return all_artists

@@ -3,7 +3,7 @@ import math
 from datetime import datetime, timedelta
 
 from calculations import calculate_signal_power
-from MountainSightCalculations import MountainSightCheck
+from MountainSightCalculations import segment_intersects_mountain
 
 def simulate_sensor_up_times(db, exp_id, start, end):
     sensors = db.get_sensors_by_exp_id(exp_id)
@@ -79,8 +79,8 @@ def _get_mountains(db, exp_id):
     mountains = db.get_mountains_by_experiment(exp_id)
     mountain_list = []
     for m in mountains:
-        # m is (id, x, y, radius, height)
-        mountain_list.append((m[1], m[2], m[3], m[4]))
+        # m is (id, x, y, side_length, height)
+        mountain_list.append(m)
     return mountain_list
 
 # Preprocess drone positions by timestamp.
@@ -95,11 +95,17 @@ def _preprocess_drone_positions(drone_trajectories):
 
 # Check if a line of sight is blocked by any mountain.
 def _line_of_sight_blocked(sx, sy, sz, dx, dy, dz, mountain_list):
+    """
+    Returns True if the straight segment from (sx,sy,sz) to (dx,dy,dz)
+    intersects any mountain in mountain_list.
+    """
+    a = (sx, sy, sz)
+    b = (dx, dy, dz)
+
     for mount in mountain_list:
-        # mount is (x, y, r, h)
-        # MountainSightCheck returns False if the mountain obstructs the view.
-        if not MountainSightCheck((sx, sy, sz), (dx, dy, dz), mount):
+        if segment_intersects_mountain(a, b, mount):
             return True
+
     return False
 
 # Main simulation function.

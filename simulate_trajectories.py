@@ -1,6 +1,8 @@
 import random
 import math
 from datetime import datetime, timedelta
+from MountainSightCalculations import segment_intersects_mountain
+from calculations import *
 
 def simulate_circle_trajectory(exp_id, drone_id, radius=3000, center=(500, 500), z=100, num_steps=60, start_time=None, speed=15):
     if start_time is None:
@@ -17,8 +19,13 @@ def simulate_circle_trajectory(exp_id, drone_id, radius=3000, center=(500, 500),
 
     return trajectory
 
-def simulate_random_trajectory(exp_id, drone_id, region=(5000, 5000), height=1000, num_steps=60, start_time=None,
-                               freq_range=(900e6, 5e9), change_prob=0.1):
+def simulate_random_trajectory(db, exp_id, drone_id, region=(5000, 5000), height=500, num_steps=60, start_time=None,
+                               freq_range=(900e6, 5e9), change_prob=0.1, sensor_safe_distance=5):
+
+    mountains = db.get_mountains_by_experiment(exp_id)
+    sensors  = db.get_sensors_by_exp_id(exp_id)
+    sensor_positions = {s[1]:(s[3],s[4],s[5]) for s in sensors}
+
     if start_time is None:
         start_time = datetime(2025, 3, 23, 12, 0, 0)
 
@@ -62,6 +69,14 @@ def simulate_random_trajectory(exp_id, drone_id, region=(5000, 5000), height=100
 
         t = start_time + i * time_interval
 
+        # 1) Mountain check
+        if _reject_if_mountain((x, y, z), (new_x, new_y, new_z), mountains):
+            new_x, new_y, new_z = x, y, z  # hover
+
+        # 2) Sensor check
+        elif _reject_if_too_close_to_sensors((new_x, new_y, new_z), sensor_positions, sensor_safe_distance):
+            new_x, new_y, new_z = x, y, z
+
         trajectory.append((100 * drone_id * exp_id + i, drone_id, exp_id, t, speed, x, y, z,
                            new_x, new_y, new_z, current_freq))
 
@@ -72,13 +87,14 @@ def simulate_random_trajectory(exp_id, drone_id, region=(5000, 5000), height=100
     return trajectory
 
 
-def generate_random_trajectories(exp_id, drone_ids, drone_freq_range, num_steps=60, region=(5000, 5000), height=1000):
+def generate_random_trajectories(db, exp_id, drone_ids, drone_freq_range, num_steps=60,
+                                 region=(5000, 5000), height=1000):
 
     all_trajectories = {}
     start_time = datetime.now()
 
     for drone_id in drone_ids:
-        traj = simulate_random_trajectory(
+        traj = simulate_random_trajectory(db,
             exp_id, drone_id,
             region=region,
             height=height,
@@ -90,7 +106,7 @@ def generate_random_trajectories(exp_id, drone_ids, drone_freq_range, num_steps=
 
     return all_trajectories
 
-def generate_mixed_trajectories(exp_id, drone_ids, drone_freq_range, num_circular=1, num_steps=60):
+def generate_mixed_trajectories(db, exp_id, drone_ids, drone_freq_range, num_circular=1, num_steps=60):
     all_trajectories = {}
     start_time = datetime.now()
 
@@ -106,7 +122,7 @@ def generate_mixed_trajectories(exp_id, drone_ids, drone_freq_range, num_circula
                 speed=random.randint(5, 50)
             )
         else:
-            traj = simulate_random_trajectory(
+            traj = simulate_random_trajectory(db,
                 exp_id, drone_id,
                 region=(5000, 5000),
                 num_steps=num_steps,
@@ -160,3 +176,21 @@ def get_earliest_and_latest_times(drone_trajectories: dict):
     start = min(traj[0][3] for traj in drone_trajectories.values())
     end = max(traj[-1][3] for traj in drone_trajectories.values())
     return start, end
+
+def _reject_if_mountain(a, b, mountains):
+    """
+    Returns True if the segment a→b intersects any mountain in the list.
+    """
+    for m in mountains or []:
+        if segment_intersects_mountain(a, b, m):
+            return True
+    return False
+
+def _reject_if_too_close_to_sensors(point, sensor_positions, min_dist):
+    """
+    Returns True if `point` is within min_dist of ANY sensor in sensor_positions.
+    """
+    for sx, sy, sz in sensor_positions.values():
+        if calculate_distance(point, (sx, sy, sz)) < min_dist:
+            return True
+    return False

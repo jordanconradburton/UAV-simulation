@@ -1,18 +1,14 @@
 import math
 import random
+from MountainSightCalculations import can_place_sensor
 
-def setup_experiment(db, exp_id, test_type="circle", region_size=(1000, 1000), height=500,
-                     sensor_type="RF", sensitivity=-90, sinr_threshold=10, num_sensors=5):
+def setup_experiment(db, exp_id, test_type="circle", region_size=(1000, 1000), height=500):
     """
     Creates an experiment record and sets up the sensors associated with it.
     """
     parameters = (
-        f"region_size: {region_size}, height: {height}, sensor_type: {sensor_type}, "
-        f"sensitivity: {sensitivity}, sinr_threshold: {sinr_threshold}, num_sensors: {num_sensors}"
-    )
+        f"region_size: {region_size}, height: {height}")
     db.set_experiment(exp_id, "2025-03-23", test_type, parameters=parameters)
-    _setup_sensors(db, exp_id, num_sensors, region_size, height, sensor_type, sensitivity, sinr_threshold)
-
     db.conn.commit()
 
 
@@ -51,41 +47,49 @@ def link_experiment_environment(db, exp_id, topography_id, env_id):
                       (exp_id, topography_id, env_id))
     db.conn.commit()
 
-def _setup_sensors(db, exp_id, num_sensors, region_size, height, sensor_type, sensitivity, sinr_threshold):
+def setup_sensors(db, exp_id, region_size, num_sensors=5, height=500, sensor_type = "RF",
+                  sensitivity_range=(-100, -80), sinr_threshold_range=(5, 15)):
 
-    for sensor_id in range(1, num_sensors + 1):
-        x = random.uniform(0, region_size[0])
-        y = random.uniform(0, region_size[1])
-        z = random.uniform(0, height) # TODO: can z be negative? What are the limits?
+    mountains = db.get_mountains_by_experiment(exp_id)
+    for sensor_id in range(1, num_sensors+1):
+        # pick x,y,z until not inside any mountain:
+        while True:
+            x = random.uniform(0, region_size[0])
+            y = random.uniform(0, region_size[1])
+            z = random.uniform(0, height)
+
+            if can_place_sensor((x, y, z), mountains):
+                break
+
+        sensitivity    = random.uniform(*sensitivity_range)
+        sinr_threshold = random.uniform(*sinr_threshold_range)
+
         db.set_sensor(sensor_id, sensor_type, sensitivity, sinr_threshold)
         db.set_sensor_exp(exp_id, sensor_id, sensor_id, x, y, z)
+    db.conn.commit()
 
 def _setup_mountains(db, num_mountains, region_size):
     """
-    Generates a specified number of mountains.
-      - The x and y positions (mx, my) are chosen randomly within the region.
-      - The mountain's height is randomly chosen between 50 and 500.
-      - The base is modeled as a rectangle with independent random dimensions:
-            width (x-dimension) between 1 and 50,
-            length (y-dimension) between 1 and 50.
-      - This rectangular area is converted into an equivalent circular base using:
-            r = sqrt((width * length) / π)
+    Generates `num_mountains` mountains with square bases.
+      - (mx, my) randomly in [0,region_size]
+      - side_length randomly in [1,50]
+      - height randomly in [50,500]
+
+    Inserts into mountains(id, x, y, side_length, height)
+    and returns the list of inserted mountain IDs.
     """
     mountain_ids = []
     for mountain_id in range(1, num_mountains + 1):
-        mx = random.uniform(1, region_size[0])
-        my = random.uniform(1, region_size[1])
+        mx = random.uniform(0, region_size[0])
+        my = random.uniform(0, region_size[1])
+        side_length = random.uniform(1, 50)
         mheight = random.uniform(50, 500)
 
-        width = random.uniform(1, 50)
-        length = random.uniform(1, 50)
-
-        area = width * length
-        mradius = math.sqrt(area / math.pi)
         db.cursor.execute(
-            "INSERT OR REPLACE INTO mountains (id, x, y, height, radius) VALUES (?, ?, ?, ?, ?)",
-            (mountain_id, mx, my, mheight, mradius)
+            "INSERT OR REPLACE INTO mountains (id, x, y, side_length, height) VALUES (?, ?, ?, ?, ?)",
+            (mountain_id, mx, my, side_length, mheight)
         )
         mountain_ids.append(mountain_id)
 
+    db.conn.commit()
     return mountain_ids

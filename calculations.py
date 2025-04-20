@@ -100,7 +100,6 @@ def calculate_sensor_metrics(exp_id, sensor_id, sensor_up_id, db: DatabaseManage
         "active": int(active)
     }
 
-# TODO: calculating metrics for all sensor_up_times - after experiment run
 def compute_metrics(db, exp_id):
     for up_time in db.get_sensor_up_time():
         if up_time[0] == exp_id:
