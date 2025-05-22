@@ -11,9 +11,8 @@ def simulate_sensor_up_times(db, exp_id, start, end):
     current_time = start
     while current_time <= end:
         for sensor_id in sensor_ids:
-            sensor_up_id = 100 * sensor_id + int(current_time.timestamp()) #TODO: maybe change this somehow? autoincrement in DB?
             db.set_sensor_up_time(
-                exp_id, sensor_id, sensor_up_id,
+                exp_id, sensor_id,
                 start_time=current_time, end_time=current_time + timedelta(seconds=1),
                 angle=45, sensor_noise=5, receiver_antenna_gain=0.0,
                 received_thermal_noise_power=None, sinr=None, active=True
@@ -110,7 +109,11 @@ def _line_of_sight_blocked(sx, sy, sz, dx, dy, dz, mountain_list):
 
 # Main simulation function.
 def run_detection_simulation(db, exp_id, drone_trajectories: dict):
-    sensor_positions = _get_sensor_positions(db, exp_id)
+    sensor_positions = {s[1]: (s[3], s[4], s[5]) for s in db.get_sensors_by_exp_id(exp_id)}
+
+    sensor_info = db.get_sensor_info_by_experiment(exp_id)
+    sensor_sens = {sid: sens for sid, _, sens, _ in sensor_info}
+
     drones = _get_drone_info(db, exp_id)
     freqs = _get_drone_freqs(db, exp_id)
     mountain_list = _get_mountains(db, exp_id)
@@ -127,6 +130,7 @@ def run_detection_simulation(db, exp_id, drone_trajectories: dict):
             # up: (exp_id, sensor_id, sensor_up_id, start_time, end_time, ..., rx_gain, ...)
             _, sensor_id, sensor_up_id, start_str, end_str, _, _, rx_gain, *_ = up
             sx, sy, sz = sensor_positions[sensor_id]
+            sensitivity = sensor_sens[sensor_id]
 
             for drone_id, dx, dy, dz in drone_positions:
                 drone = drones[drone_id]
@@ -145,7 +149,7 @@ def run_detection_simulation(db, exp_id, drone_trajectories: dict):
                 print(f"  Sensor {sensor_id} at ({sx:.1f}, {sy:.1f}, {sz:.1f}) → Prx: {prx:.2f} dBm")
                 print("Distance: ", distance)
 
-                if not blocked and (-100 < prx < -80):
+                if not blocked and prx > sensitivity:
                     db.set_sensor_detection(sensor_up_id=sensor_up_id, drone_id=drone_id,
                                             received_power=prx, received_signal_bandwidth=5)
                     print("      → Detection occurred")

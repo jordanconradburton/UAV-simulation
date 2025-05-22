@@ -34,7 +34,7 @@ def setup_mountains(ax, db, exp_id):
         mradius = m[3]
         mheight = m[4]
 
-        scale_factor = 5
+        scale_factor = 1
         scaled_radius = mradius * scale_factor
 
         triangle = RegularPolygon((mx, my), numVertices=3, radius=scaled_radius,

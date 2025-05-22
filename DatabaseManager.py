@@ -36,7 +36,7 @@ class DatabaseManager:
         CREATE TABLE IF NOT EXISTS sensor_up_time (
             exp_id INTEGER,
             sensor_id INTEGER,
-            sensor_up_id INTEGER,
+            sensor_up_id INTEGER PRIMARY KEY AUTOINCREMENT,
             start_time TIMESTAMP,
             end_time TIMESTAMP,
             angle REAL,
@@ -45,7 +45,6 @@ class DatabaseManager:
             received_thermal_noise_power REAL,
             sinr REAL,
             active INTEGER,
-            PRIMARY KEY (sensor_up_id),
             FOREIGN KEY (exp_id) REFERENCES experiments(id),
             FOREIGN KEY (sensor_id) REFERENCES sensors(id)
         );
@@ -177,6 +176,16 @@ class DatabaseManager:
         )
         self.conn.commit()
 
+    def get_sensor_info_by_experiment(self, exp_id):
+        self.cursor.execute("""
+            SELECT s.id, s.type, s.sensitivity, s.sinr_threshold
+              FROM sensors AS s
+              JOIN sensor_exp AS se 
+                ON s.id = se.sensor_id
+             WHERE se.exp_id = ?
+        """, (exp_id,))
+        return self.cursor.fetchall()
+
     # Getters and Setters for Sensor Experiments
     def get_sensor_exp(self):
         self.cursor.execute("SELECT * FROM sensor_exp")
@@ -213,12 +222,12 @@ class DatabaseManager:
         """, (exp_id, timestamp, timestamp))
         return self.cursor.fetchall()
 
-    def set_sensor_up_time(self, exp_id, sensor_id, sensor_up_id, start_time, end_time, angle, sensor_noise,
+    def set_sensor_up_time(self, exp_id, sensor_id, start_time, end_time, angle, sensor_noise,
                            receiver_antenna_gain, received_thermal_noise_power, sinr, active):
         self.cursor.execute("""
-            INSERT OR REPLACE INTO sensor_up_time (exp_id, sensor_id, sensor_up_id, start_time, end_time, angle, sensor_noise, receiver_antenna_gain, received_thermal_noise_power, sinr, active)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (exp_id, sensor_id, sensor_up_id, start_time, end_time, angle, sensor_noise, receiver_antenna_gain,
+            INSERT OR REPLACE INTO sensor_up_time (exp_id, sensor_id, start_time, end_time, angle, sensor_noise, receiver_antenna_gain, received_thermal_noise_power, sinr, active)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (exp_id, sensor_id, start_time, end_time, angle, sensor_noise, receiver_antenna_gain,
               received_thermal_noise_power, sinr, active))
         self.conn.commit()
 
