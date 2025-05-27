@@ -74,6 +74,11 @@ def setup_sensors(db, exp_id, region_size, num_sensors=5, height=500, sensor_typ
 
     db.conn.commit()
 
+def _rects_overlap(r1, r2):
+    # r = (xmin, ymin, xmax, ymax)
+    return not (r1[2] <= r2[0] or r1[0] >= r2[2] or
+                r1[3] <= r2[1] or r1[1] >= r2[3])
+
 def _setup_mountains(db, num_mountains, region_size):
     """
     Generates `num_mountains` mountains with square bases.
@@ -85,10 +90,24 @@ def _setup_mountains(db, num_mountains, region_size):
     and returns the list of inserted mountain IDs.
     """
     mountain_ids = []
+    existing = []
+
     for mountain_id in range(1, num_mountains + 1):
-        mx = random.uniform(0, region_size[0])
-        my = random.uniform(0, region_size[1])
-        side_length = random.uniform(50, 1000)
+
+        while True:
+            mx = random.uniform(0, region_size[0])
+            my = random.uniform(0, region_size[1])
+            side_length = random.uniform(50, 1000)
+            half = side_length / 2.0
+
+            xmin, ymin = mx - half, my - half
+            xmax, ymax = mx + half, my + half
+            rect = (xmin, ymin, xmax, ymax)
+
+            if not any(_rects_overlap(rect, other) for other in existing):
+                existing.append(rect)
+                break
+
         mheight = random.uniform(50, 500)
 
         db.cursor.execute(

@@ -17,11 +17,6 @@ TODO:
 
 3. is there a range for transmitter gain or set to 0.0?
 - is this a set value per drone or can it change along the trajectory?
-
-4. different region sizes
-- need to make sure that sensors, drones, mountains, everything accounts for the actual region size, 
-not just the default value
-
 """
 
 def run_simulation(
@@ -47,17 +42,17 @@ def run_simulation(
     # ------- randomize defaults -------
     num_sensors   = num_sensors or random.randint(3, 20)
     num_drones    = num_drones  or random.randint(1, 8)
-    region_size   = region_size or (5000, 5000) #TODO: accommodate different region sizes
+    region_size   = region_size or (random.randint(100, 5000), random.randint(100, 5000))
     sensor_height = sensor_height  or 100           #TODO: check what is the maximum z for sensor placement
-    num_mountains = num_mountains or random.randint(0, 5)
+    num_mountains = num_mountains or random.randint(4, 5)
     target_height = target_height or 500
 
     # ------- environment setup -------
     setup_experiment(db, exp_id, region_size=region_size)
     setup_topography(db, topo_id, region_size=region_size, num_mountains=num_mountains)
-    setup_sensors(db, exp_id, num_sensors=num_sensors, region_size=region_size, height=sensor_height)
     setup_environment_record(db, env_id, disturbance=random.uniform(0,1), visibility=random.uniform(10,100))
     link_experiment_environment(db, exp_id, topo_id, env_id)
+    setup_sensors(db, exp_id, num_sensors=num_sensors, region_size=region_size, height=sensor_height)
 
     # ------- drone creation & trajectories -------
     drone_info = create_drones(db, exp_id, num_drones)

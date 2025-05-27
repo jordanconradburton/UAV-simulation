@@ -75,7 +75,7 @@ def MountainSightCheck(a, b, mount):
 def point_in_mountain(point, mountain):
     """
     Check if a 3D point lies inside the square base of a mountain (and under its height).
-    mountain: (mx, my, side_length, height)
+    mountain: (id, mx, my, side_length, height)
     """
     x, y, z = point
     id, mx, my, side, h = mountain
@@ -128,7 +128,7 @@ def segment_intersects_mountain(a, b, mountain, eps=1e-9):
 def can_place_sensor(point, mountain_list):
     """
     Return True if `point` is not inside any mountain in `mountain_list`.
-    mountain_list: iterable of (mx, my, side_length, height)
+    mountain_list: iterable of (id, mx, my, side_length, height)
     """
     return not any(point_in_mountain(point, m) for m in mountain_list)
 

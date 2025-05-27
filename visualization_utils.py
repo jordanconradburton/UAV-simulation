@@ -1,31 +1,35 @@
 import matplotlib
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
-from matplotlib.patches import RegularPolygon
+from matplotlib.patches import Rectangle
 from matplotlib.patches import Wedge
 
 from datetime import datetime
 
 matplotlib.use("TkAgg")
 
-def setup_sensors(ax, sensors):
+def setup_sensors(ax, sensors, region):
 
     sensor_dots = {}
     sensor_text = {}
     sensor_id_text = {}
-    color = "black"  # Use gray for all sensors.
+    color = "black"
+    y_offset_text = min(region) * 0.02 #100
+    y_offset_id_text = min(region) * 0.04 #-200
+    size = min(4, min(region) * 0.01) #8
+
     for i, s in enumerate(sensors):
         _, sensor_id, _, sx, sy, sz = s
         label = "Sensor" if i == 0 else ""  # Only label the first sensor.
-        dot, = ax.plot(sx, sy, 'o', color=color, markersize=8, label=label)
+        dot, = ax.plot(sx, sy, 'o', color=color, markersize=size, label=label)
         sensor_dots[sensor_id] = dot
-        sensor_text[sensor_id] = ax.text(sx, sy + 100, f"z: {sz:.1f}",
+        sensor_text[sensor_id] = ax.text(sx, sy + y_offset_text, f"z: {sz:.1f}",
                                          fontsize=9, color="black", ha='center')
-        sensor_id_text[sensor_id] = ax.text(sx, sy - 200, f"ID: {sensor_id}",
+        sensor_id_text[sensor_id] = ax.text(sx, sy - y_offset_id_text, f"ID: {sensor_id}",
                                             fontsize=9, color="black", ha='center')
     return sensor_dots, sensor_text, sensor_id_text
 
-def setup_sensor_sectors(ax, db, exp_id):
+def setup_sensor_sectors(ax, db, exp_id, region):
     """
     Draws sector wedges around each sensor, shaded according to gain.
     Returns a dict sensor_id -> list of Wedge patches.
@@ -47,7 +51,7 @@ def setup_sensor_sectors(ax, db, exp_id):
         _, sensor_id, _, sx, sy, _ = s
         sector_patches = []
         # choose display radius relative to region or fixed
-        radius = 200
+        radius = min(region) * 0.05
         for (start, end, gain_db) in patterns.get(sensor_id, []):
             # normalize gain to [0,1]
             norm = (gain_db - gmin) / delta
@@ -70,26 +74,32 @@ def setup_sensor_sectors(ax, db, exp_id):
         wedges[sensor_id] = sector_patches
     return wedges
 
-def setup_mountains(ax, db, exp_id):
+def setup_mountains(ax, db, exp_id, region):
 
+    y_offset = min(region) * 0.02
     mountains = db.get_mountains_by_experiment(exp_id)
     mountain_markers = []
     for i, m in enumerate(mountains):
-        # m: (id, x, y, radius, height)
+        # m: (id, x, y, side, height)
         mx = m[1]
         my = m[2]
-        mradius = m[3]
+        mside = m[3]
         mheight = m[4]
 
-        scale_factor = 1
-        scaled_radius = mradius * scale_factor
-
-        triangle = RegularPolygon((mx, my), numVertices=3, radius=scaled_radius,
-                                  orientation=0,  # You can adjust this to rotate the triangle if desired.
-                                  edgecolor='saddlebrown', facecolor='none', lw=2, zorder=1)
-        ax.add_patch(triangle)
-        mountain_markers.append(triangle)
-        text = ax.text(mx, my + scaled_radius + 10, f"z: {mheight:.1f}",
+        half = mside / 2.0
+        # draw square footprint
+        square = Rectangle(
+            (mx - half, my - half),
+            mside, mside,
+            facecolor='saddlebrown',
+            edgecolor='black',
+            alpha=0.6,
+            linewidth=1,
+            zorder=1
+        )
+        ax.add_patch(square)
+        mountain_markers.append(square)
+        text = ax.text(mx, my + half + y_offset, f"z: {mheight:.1f}",
                        fontsize=9, color='saddlebrown', ha='center', zorder=2)
         mountain_markers.append(text)
     return mountain_markers
@@ -154,13 +164,12 @@ def visualize_simulation(db, exp_id, drone_trajectories, region=(1000, 1000)):
 
     # Set up sensors.
     sensors = db.get_sensors_by_exp_id(exp_id)
-    sensor_dots, sensor_text, sensor_id_text = setup_sensors(ax, sensors)
+    sensor_dots, sensor_text, sensor_id_text = setup_sensors(ax, sensors, region)
     sensors_dict = { s[1]:(s[3],s[4],s[5]) for s in sensors }
-    sector_patches = setup_sensor_sectors(ax, db, exp_id)
-
+    sector_patches = setup_sensor_sectors(ax, db, exp_id, region)
 
     # Set up mountains.
-    mountain_markers = setup_mountains(ax, db, exp_id)
+    mountain_markers = setup_mountains(ax, db, exp_id, region)
 
     # Set up drones.
     cmap = plt.cm.get_cmap('tab10')

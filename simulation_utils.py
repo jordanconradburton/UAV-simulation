@@ -135,7 +135,6 @@ def run_detection_simulation(db, exp_id, drone_trajectories: dict):
     # sensor_info rows: (id, type, sens, sinr_th, freq_min, freq_max, sector_count)
 
     patterns = db.load_sensor_patterns(exp_id) # sensor angle gain patterns
-    print(patterns)
     sensor_sens = {sid: sens for sid, _, sens, _, _, _ in sensor_info}
     freq_ranges = {sid: (fmin, fmax)
                    for sid, _, _, _, fmin, fmax in sensor_info}

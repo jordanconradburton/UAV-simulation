@@ -1,7 +1,7 @@
 import random
 import math
 from datetime import datetime, timedelta
-from MountainSightCalculations import segment_intersects_mountain
+from MountainSightCalculations import segment_intersects_mountain, point_in_mountain
 from calculations import *
 
 def simulate_random_trajectory(db, exp_id, drone_id, region=(5000, 5000), height=500, num_steps=60, start_time=None,
@@ -15,9 +15,17 @@ def simulate_random_trajectory(db, exp_id, drone_id, region=(5000, 5000), height
         start_time = datetime(2025, 3, 23, 12, 0, 0)
 
     time_interval = timedelta(seconds=1)
-    # Start at a random position in the region
-    x, y = random.uniform(0, region[0]), random.uniform(0, region[1])
-    z = random.uniform(0, height)
+
+    # Start at a random position in the region that is not a mountain
+    while True:
+        x, y = random.uniform(0, region[0]), random.uniform(0, region[1])
+        z = random.uniform(0, height)
+        if not any(
+            point_in_mountain((x, y, z), (m_id, mx, my, side, h))
+            for m_id, mx, my, side, h in mountains
+        ):
+            break
+
     current_freq = random.uniform(*freq_range)
 
     trajectory = []
