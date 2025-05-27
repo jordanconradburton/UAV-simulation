@@ -35,6 +35,11 @@ def run_simulation(db, exp_id, topography_id, env_id, num_drones, num_sensors, r
     drone_info = create_drones(db, exp_id, num_drones, power_range=drone_power_range,
                   gain_range=drone_gain_range, drone_types=drone_types, properties_list=drone_properties)
     drone_ids = list(drone_info.keys())
+    print(drone_info)
+    drone_freq_ranges = {
+        did: info["freq_range"]
+        for did, info in drone_info.items()
+    }
 
     if simulation_type == "mixed":
         drone_trajectories = generate_mixed_trajectories(db,
@@ -42,14 +47,14 @@ def run_simulation(db, exp_id, topography_id, env_id, num_drones, num_sensors, r
             drone_ids=drone_ids,
             num_circular=1,
             num_steps=num_steps,
-            drone_freq_range=drone_freq_range
+            drone_freq_range=drone_freq_ranges
         )
     else:
         drone_trajectories = generate_random_trajectories(db,
             exp_id=exp_id,
             drone_ids=drone_ids,
             num_steps=num_steps,
-            drone_freq_range=drone_freq_range,
+            drone_freq_ranges=drone_freq_ranges,
             height=height
         )
 

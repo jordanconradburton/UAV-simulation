@@ -87,20 +87,21 @@ def simulate_random_trajectory(db, exp_id, drone_id, region=(5000, 5000), height
     return trajectory
 
 
-def generate_random_trajectories(db, exp_id, drone_ids, drone_freq_range, num_steps=60,
+def generate_random_trajectories(db, exp_id, drone_ids, drone_freq_ranges, num_steps=60,
                                  region=(5000, 5000), height=1000):
 
     all_trajectories = {}
     start_time = datetime.now()
 
     for drone_id in drone_ids:
+        fmin, fmax = drone_freq_ranges[drone_id]
         traj = simulate_random_trajectory(db,
             exp_id, drone_id,
             region=region,
             height=height,
             num_steps=num_steps,
             start_time=start_time,
-            freq_range=drone_freq_range
+            freq_range=(fmin, fmax)
         )
         all_trajectories[drone_id] = traj
 
@@ -112,6 +113,7 @@ def generate_mixed_trajectories(db, exp_id, drone_ids, drone_freq_range, num_cir
 
     sorted_ids = sorted(drone_ids)
     for i, drone_id in enumerate(sorted_ids):
+        fmin, fmax = drone_freq_range[drone_id]
         if i <= num_circular:
             traj = simulate_circle_trajectory(
                 exp_id, drone_id,
@@ -127,7 +129,7 @@ def generate_mixed_trajectories(db, exp_id, drone_ids, drone_freq_range, num_cir
                 region=(5000, 5000),
                 num_steps=num_steps,
                 start_time=start_time,
-                freq_range=drone_freq_range
+                freq_range=(fmin, fmax)
             )
         all_trajectories[i] = traj
 

@@ -16,7 +16,9 @@ class DatabaseManager:
             id INTEGER PRIMARY KEY,
             type TEXT NOT NULL,
             sensitivity REAL,
-            sinr_threshold REAL
+            sinr_threshold REAL,
+            freq_min REAL,
+            freq_max REAL
         );
 
         -- Table: Sensor Experiments
@@ -66,7 +68,9 @@ class DatabaseManager:
             drone_type TEXT NOT NULL,
             drone_transmitter_power REAL,
             transmitter_antenna_gain REAL,
-            properties TEXT
+            properties TEXT, 
+            freq_min REAL,
+            freq_max REAL
         );
 
         -- Table: Drone Experiments
@@ -169,16 +173,17 @@ class DatabaseManager:
         self.cursor.execute("SELECT * FROM sensors")
         return self.cursor.fetchall()
 
-    def set_sensor(self, sensor_id, sensor_type, sensitivity, sinr_threshold):
-        self.cursor.execute(
-            "INSERT OR REPLACE INTO sensors (id, type, sensitivity, sinr_threshold) VALUES (?, ?, ?, ?)",
-            (sensor_id, sensor_type, sensitivity, sinr_threshold)
+    def set_sensor(self, sensor_id, sensor_type, sensitivity, sinr_threshold, freq_min, freq_max):
+        self.cursor.execute("""
+            INSERT OR REPLACE INTO sensors (id, type, sensitivity, sinr_threshold, freq_min, freq_max) 
+            VALUES (?, ?, ?, ?, ?, ?)""",
+            (sensor_id, sensor_type, sensitivity, sinr_threshold, freq_min, freq_max)
         )
         self.conn.commit()
 
     def get_sensor_info_by_experiment(self, exp_id):
         self.cursor.execute("""
-            SELECT s.id, s.type, s.sensitivity, s.sinr_threshold
+            SELECT s.id, s.type, s.sensitivity, s.sinr_threshold, s.freq_min, s.freq_max
               FROM sensors AS s
               JOIN sensor_exp AS se 
                 ON s.id = se.sensor_id
@@ -260,11 +265,14 @@ class DatabaseManager:
         self.cursor.execute("SELECT * FROM drones WHERE id = ?", (drone_id,))
         return self.cursor.fetchone()  # Use fetchone() since there should only be one drone per ID
 
-    def set_drone(self, drone_id, drone_type, drone_transmitter_power, transmitter_antenna_gain, properties):
+    def set_drone(self, drone_id, drone_type, drone_transmitter_power, transmitter_antenna_gain, properties,
+                  freq_min, freq_max):
         self.cursor.execute("""
-            INSERT OR REPLACE INTO drones (id, drone_type, drone_transmitter_power, transmitter_antenna_gain, properties)
-            VALUES (?, ?, ?, ?, ?)
-        """, (drone_id, drone_type, drone_transmitter_power, transmitter_antenna_gain, properties))
+            INSERT OR REPLACE INTO drones (id, drone_type, drone_transmitter_power, transmitter_antenna_gain, 
+            properties, freq_min, freq_max)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (drone_id, drone_type, drone_transmitter_power, transmitter_antenna_gain, properties,
+              freq_min, freq_max))
         self.conn.commit()
 
     # Getters and Setters for Drone Experiments

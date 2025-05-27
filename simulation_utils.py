@@ -5,6 +5,16 @@ from datetime import datetime, timedelta
 from calculations import calculate_signal_power
 from MountainSightCalculations import segment_intersects_mountain
 
+FREQUENCY_BANDS_HZ = [
+    (433e6, 435e6),    # Band 1
+    (902e6, 928e6),    # Band 2
+    (1710e6,1880e6),   # Band 3
+    (2400e6,2500e6),   # Band 4
+    (3655e6,3695e6),   # Band 5
+    (4819e6,5989e6),   # Band 6
+    (5160e6,5895e6),   # Band 7
+]
+
 def simulate_sensor_up_times(db, exp_id, start, end):
     sensors = db.get_sensors_by_exp_id(exp_id)
     sensor_ids = [s[1] for s in sensors]
@@ -33,12 +43,15 @@ def create_drones(db, exp_id, num_drones,
         drone_type = random.choice(drone_types)
         properties = random.choice(properties_list)
 
+        fmin, fmax = random.choice(FREQUENCY_BANDS_HZ)
+
         # Store the properties in our drone_info mapping.
         drone_info[drone_id] = {
             "transmitter_power": transmitter_power,
             "gain": transmitter_gain,
             "drone_type": drone_type,
-            "properties": properties
+            "properties": properties,
+            "freq_range": (fmin, fmax)
         }
 
         # Insert the drone record into the database.
@@ -47,7 +60,9 @@ def create_drones(db, exp_id, num_drones,
             drone_type=drone_type,
             drone_transmitter_power=transmitter_power,
             transmitter_antenna_gain=transmitter_gain,
-            properties=properties
+            properties=properties,
+            freq_min=fmin,
+            freq_max=fmax
         )
         # Link the drone to the experiment.
         db.set_drone_exp(exp_id, drone_id, drone_exp_id=drone_id)
@@ -107,12 +122,22 @@ def _line_of_sight_blocked(sx, sy, sz, dx, dy, dz, mountain_list):
 
     return False
 
+def _drone_frequency_in_sensor_range(drone_frequency, sensor_range):
+    fmin, fmax = sensor_range
+    return (fmin <= drone_frequency <= fmax)
+
+
+
 # Main simulation function.
 def run_detection_simulation(db, exp_id, drone_trajectories: dict):
     sensor_positions = {s[1]: (s[3], s[4], s[5]) for s in db.get_sensors_by_exp_id(exp_id)}
 
     sensor_info = db.get_sensor_info_by_experiment(exp_id)
-    sensor_sens = {sid: sens for sid, _, sens, _ in sensor_info}
+    # sensor_info rows: (id, type, sens, sinr_th, freq_min, freq_max)
+
+    sensor_sens = {sid: sens for sid, _, sens, _, _, _ in sensor_info}
+    freq_ranges = {sid: (fmin, fmax)
+                   for sid, _, _, _, fmin, fmax in sensor_info}
 
     drones = _get_drone_info(db, exp_id)
     freqs = _get_drone_freqs(db, exp_id)
@@ -138,9 +163,16 @@ def run_detection_simulation(db, exp_id, drone_trajectories: dict):
                 tx_gain = drone[3]       # transmitter antenna gain
                 freq_hz = freqs[(exp_id, drone_id)]
 
+                # Check drone frequency in sensor range
+                fmin, fmax = freq_ranges[sensor_id]
+                in_range = _drone_frequency_in_sensor_range(freq_hz, freq_ranges[sensor_id])
+                if not in_range:
+                    print(f"      → Drone freq {freq_hz/1e6:,.2f} MHz  outside sensor {sensor_id} range "
+                          f"{fmin/1e6:,.2f}–{fmax/1e6:,.2f} MHz ")
+
                 # Check mountain blockage.
-                blocked = _line_of_sight_blocked(sx, sy, sz, dx, dy, dz, mountain_list)
-                if blocked:
+                mountain_blocked = _line_of_sight_blocked(sx, sy, sz, dx, dy, dz, mountain_list)
+                if mountain_blocked:
                     print(f"      → Line of sight blocked by a mountain for sensor {sensor_id} and drone {drone_id}")
 
                 print(f"  Drone {drone_id} position: ({dx:.1f}, {dy:.1f}, {dz:.1f})")
@@ -149,7 +181,7 @@ def run_detection_simulation(db, exp_id, drone_trajectories: dict):
                 print(f"  Sensor {sensor_id} at ({sx:.1f}, {sy:.1f}, {sz:.1f}) → Prx: {prx:.2f} dBm")
                 print("Distance: ", distance)
 
-                if not blocked and prx > sensitivity:
+                if not mountain_blocked and in_range and prx > sensitivity:
                     db.set_sensor_detection(sensor_up_id=sensor_up_id, drone_id=drone_id,
                                             received_power=prx, received_signal_bandwidth=5)
                     print("      → Detection occurred")
