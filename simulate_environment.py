@@ -2,12 +2,12 @@ import random
 from MountainSightCalculations import can_place_sensor
 from simulation_utils import FREQUENCY_BANDS_HZ
 
-def setup_experiment(db, exp_id, test_type="circle", region_size=(1000, 1000), height=500):
+def setup_experiment(db, exp_id, test_type="circle", region_size=(1000, 1000)):
     """
     Creates an experiment record and sets up the sensors associated with it.
     """
     parameters = (
-        f"region_size: {region_size}, height: {height}")
+        f"region_size: {region_size}")
     db.set_experiment(exp_id, "2025-03-23", test_type, parameters=parameters)
     db.conn.commit()
 
@@ -51,7 +51,7 @@ def setup_sensors(db, exp_id, region_size, num_sensors=5, height=500, sensor_typ
                   sensitivity_range=(-100, -80), sinr_threshold_range=(5, 15)):
 
     mountains = db.get_mountains_by_experiment(exp_id)
-    for sensor_id in range(1, num_sensors+1):
+    for _ in range(1, num_sensors+1):
         # pick x,y,z until not inside any mountain:
         while True:
             x = random.uniform(0, region_size[0])
@@ -64,17 +64,21 @@ def setup_sensors(db, exp_id, region_size, num_sensors=5, height=500, sensor_typ
         sensitivity    = random.uniform(*sensitivity_range)
         sinr_threshold = random.uniform(*sinr_threshold_range)
         freq_min, freq_max = random.choice(FREQUENCY_BANDS_HZ)
-        print(freq_min, freq_max)
+        sector_count = random.randint(1, 6)
 
-        db.set_sensor(sensor_id, sensor_type, sensitivity, sinr_threshold, freq_min, freq_max)
+        sensor_id = db.set_sensor(sensor_type, sensitivity, sinr_threshold, freq_min, freq_max, sector_count)
         db.set_sensor_exp(exp_id, sensor_id, sensor_id, x, y, z)
+
+        # create sensor gain sectors
+        _setup_sensor_gain_sectors(db, sensor_id, exp_id, sector_count)
+
     db.conn.commit()
 
 def _setup_mountains(db, num_mountains, region_size):
     """
     Generates `num_mountains` mountains with square bases.
       - (mx, my) randomly in [0,region_size]
-      - side_length randomly in [1,50]
+      - side_length randomly in [50,1000]
       - height randomly in [50,500]
 
     Inserts into mountains(id, x, y, side_length, height)
@@ -95,3 +99,20 @@ def _setup_mountains(db, num_mountains, region_size):
 
     db.conn.commit()
     return mountain_ids
+
+def _setup_sensor_gain_sectors(db, sensor_id, exp_id, sector_count):
+    for sector_idx in range(1, sector_count + 1):
+        # carve up 360° into equal slices
+        angle_start = 360 * (sector_idx - 1) / sector_count
+        angle_end = 360 * sector_idx / sector_count
+
+        gain_db = random.uniform(-1.0, 3.0) #TODO: verify gain range
+
+        db.set_sensor_gain_sector(
+            sensor_id=sensor_id,
+            exp_id=exp_id,
+            sector_id=sector_idx,
+            angle_start=angle_start,
+            angle_end=angle_end,
+            gain_db=gain_db
+        )

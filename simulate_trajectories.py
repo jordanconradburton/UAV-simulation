@@ -4,21 +4,6 @@ from datetime import datetime, timedelta
 from MountainSightCalculations import segment_intersects_mountain
 from calculations import *
 
-def simulate_circle_trajectory(exp_id, drone_id, radius=3000, center=(500, 500), z=100, num_steps=60, start_time=None, speed=15):
-    if start_time is None:
-        start_time = datetime(2025, 3, 23, 12, 0, 0)
-    time_interval = timedelta(seconds=1)
-    trajectory = []
-
-    for i in range(num_steps):
-        angle = 2 * math.pi * i / num_steps
-        x = center[0] + radius * math.cos(angle)
-        y = center[1] + radius * math.sin(angle)
-        t = start_time + i * time_interval
-        trajectory.append((100*drone_id*exp_id + i, drone_id, exp_id, t, speed, x, y, z, x, y, z))
-
-    return trajectory
-
 def simulate_random_trajectory(db, exp_id, drone_id, region=(5000, 5000), height=500, num_steps=60, start_time=None,
                                freq_range=(900e6, 5e9), change_prob=0.1, sensor_safe_distance=5):
 
@@ -104,34 +89,6 @@ def generate_random_trajectories(db, exp_id, drone_ids, drone_freq_ranges, num_s
             freq_range=(fmin, fmax)
         )
         all_trajectories[drone_id] = traj
-
-    return all_trajectories
-
-def generate_mixed_trajectories(db, exp_id, drone_ids, drone_freq_range, num_circular=1, num_steps=60):
-    all_trajectories = {}
-    start_time = datetime.now()
-
-    sorted_ids = sorted(drone_ids)
-    for i, drone_id in enumerate(sorted_ids):
-        fmin, fmax = drone_freq_range[drone_id]
-        if i <= num_circular:
-            traj = simulate_circle_trajectory(
-                exp_id, drone_id,
-                radius=1000 + 50 * i,
-                center=(2500, 2500),
-                num_steps=num_steps,
-                start_time=start_time,
-                speed=random.randint(5, 50)
-            )
-        else:
-            traj = simulate_random_trajectory(db,
-                exp_id, drone_id,
-                region=(5000, 5000),
-                num_steps=num_steps,
-                start_time=start_time,
-                freq_range=(fmin, fmax)
-            )
-        all_trajectories[i] = traj
 
     return all_trajectories
 

@@ -24,8 +24,7 @@ def simulate_sensor_up_times(db, exp_id, start, end):
             db.set_sensor_up_time(
                 exp_id, sensor_id,
                 start_time=current_time, end_time=current_time + timedelta(seconds=1),
-                angle=45, sensor_noise=5, receiver_antenna_gain=0.0,
-                received_thermal_noise_power=None, sinr=None, active=True
+                sensor_noise=5, received_thermal_noise_power=None, sinr=None, active=True
             )
         current_time += timedelta(seconds=1)
 
@@ -39,7 +38,8 @@ def create_drones(db, exp_id, num_drones,
     drone_info = {}
     for drone_id in range(1, num_drones + 1):
         transmitter_power = random.uniform(*power_range)
-        transmitter_gain = random.uniform(*gain_range)
+        # transmitter_gain = random.uniform(*gain_range)
+        transmitter_gain = 0.0
         drone_type = random.choice(drone_types)
         properties = random.choice(properties_list)
 
@@ -127,14 +127,15 @@ def _drone_frequency_in_sensor_range(drone_frequency, sensor_range):
     return (fmin <= drone_frequency <= fmax)
 
 
-
 # Main simulation function.
 def run_detection_simulation(db, exp_id, drone_trajectories: dict):
     sensor_positions = {s[1]: (s[3], s[4], s[5]) for s in db.get_sensors_by_exp_id(exp_id)}
 
     sensor_info = db.get_sensor_info_by_experiment(exp_id)
-    # sensor_info rows: (id, type, sens, sinr_th, freq_min, freq_max)
+    # sensor_info rows: (id, type, sens, sinr_th, freq_min, freq_max, sector_count)
 
+    patterns = db.load_sensor_patterns(exp_id) # sensor angle gain patterns
+    print(patterns)
     sensor_sens = {sid: sens for sid, _, sens, _, _, _ in sensor_info}
     freq_ranges = {sid: (fmin, fmax)
                    for sid, _, _, _, fmin, fmax in sensor_info}
@@ -152,10 +153,11 @@ def run_detection_simulation(db, exp_id, drone_trajectories: dict):
 
         for up in sensor_up_times:
             # Unpack sensor up time entry.
-            # up: (exp_id, sensor_id, sensor_up_id, start_time, end_time, ..., rx_gain, ...)
-            _, sensor_id, sensor_up_id, start_str, end_str, _, _, rx_gain, *_ = up
+            # up: (exp_id, sensor_id, sensor_up_id, start_time, end_time, ...)
+            _, sensor_id, sensor_up_id, start_str, end_str, *_ = up
             sx, sy, sz = sensor_positions[sensor_id]
             sensitivity = sensor_sens[sensor_id]
+            rx_gain = 0
 
             for drone_id, dx, dy, dz in drone_positions:
                 drone = drones[drone_id]
@@ -174,6 +176,15 @@ def run_detection_simulation(db, exp_id, drone_trajectories: dict):
                 mountain_blocked = _line_of_sight_blocked(sx, sy, sz, dx, dy, dz, mountain_list)
                 if mountain_blocked:
                     print(f"      → Line of sight blocked by a mountain for sensor {sensor_id} and drone {drone_id}")
+
+                # Calculate G_r according to sensor sector
+                dif_x, dif_y = dx - sx, dy - sy
+                theta = math.degrees(math.atan2(dif_y, dif_x)) % 360
+
+                for start, end, gain_db in patterns[sensor_id]:
+                    if start <= theta < end:
+                        rx_gain = gain_db
+                        break
 
                 print(f"  Drone {drone_id} position: ({dx:.1f}, {dy:.1f}, {dz:.1f})")
                 distance = math.sqrt((dx - sx) ** 2 + (dy - sy) ** 2 + (dz - sz) ** 2)

@@ -2,6 +2,8 @@ import matplotlib
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 from matplotlib.patches import RegularPolygon
+from matplotlib.patches import Wedge
+
 from datetime import datetime
 
 matplotlib.use("TkAgg")
@@ -11,7 +13,7 @@ def setup_sensors(ax, sensors):
     sensor_dots = {}
     sensor_text = {}
     sensor_id_text = {}
-    color = "gray"  # Use gray for all sensors.
+    color = "black"  # Use gray for all sensors.
     for i, s in enumerate(sensors):
         _, sensor_id, _, sx, sy, sz = s
         label = "Sensor" if i == 0 else ""  # Only label the first sensor.
@@ -22,6 +24,51 @@ def setup_sensors(ax, sensors):
         sensor_id_text[sensor_id] = ax.text(sx, sy - 200, f"ID: {sensor_id}",
                                             fontsize=9, color="black", ha='center')
     return sensor_dots, sensor_text, sensor_id_text
+
+def setup_sensor_sectors(ax, db, exp_id):
+    """
+    Draws sector wedges around each sensor, shaded according to gain.
+    Returns a dict sensor_id -> list of Wedge patches.
+    """
+    # Load per-sensor patterns: list of (start, end, gain_db)
+    patterns = db.load_sensor_patterns(exp_id)
+    # Gather global gain min/max for normalization
+    all_gains = [g for sectors in patterns.values() for (_, _, g) in sectors]
+    if not all_gains:
+        return {}
+    gmin, gmax = min(all_gains), max(all_gains)
+    # Fallback if flat
+    delta = gmax - gmin if gmax > gmin else 1.0
+
+    wedges = {}
+    # Sensor positions
+    sensors = db.get_sensors_by_exp_id(exp_id)
+    for s in sensors:
+        _, sensor_id, _, sx, sy, _ = s
+        sector_patches = []
+        # choose display radius relative to region or fixed
+        radius = 200
+        for (start, end, gain_db) in patterns.get(sensor_id, []):
+            # normalize gain to [0,1]
+            norm = (gain_db - gmin) / delta
+            # invert for shading: higher gain -> lighter
+            shade = 1.0 - norm
+            face = str(shade)
+            wedge = Wedge(
+                center=(sx, sy),
+                r=radius,
+                theta1=start,
+                theta2=end,
+                facecolor=face,
+                edgecolor='black',
+                linewidth=0.5,
+                alpha=0.5,
+                zorder=0
+            )
+            ax.add_patch(wedge)
+            sector_patches.append(wedge)
+        wedges[sensor_id] = sector_patches
+    return wedges
 
 def setup_mountains(ax, db, exp_id):
 
@@ -109,6 +156,8 @@ def visualize_simulation(db, exp_id, drone_trajectories, region=(1000, 1000)):
     sensors = db.get_sensors_by_exp_id(exp_id)
     sensor_dots, sensor_text, sensor_id_text = setup_sensors(ax, sensors)
     sensors_dict = { s[1]:(s[3],s[4],s[5]) for s in sensors }
+    sector_patches = setup_sensor_sectors(ax, db, exp_id)
+
 
     # Set up mountains.
     mountain_markers = setup_mountains(ax, db, exp_id)
@@ -166,6 +215,8 @@ def visualize_simulation(db, exp_id, drone_trajectories, region=(1000, 1000)):
         all_artists.extend(sensor_text.values())
         all_artists.extend(mountain_markers)
         all_artists.extend(detection_lines)
+        for patches in sector_patches.values():
+            all_artists += patches
 
         return all_artists
 

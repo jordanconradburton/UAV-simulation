@@ -13,12 +13,25 @@ class DatabaseManager:
         schema_sql = """
         -- Table: Sensor Information
         CREATE TABLE IF NOT EXISTS sensors (
-            id INTEGER PRIMARY KEY,
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
             type TEXT NOT NULL,
             sensitivity REAL,
             sinr_threshold REAL,
             freq_min REAL,
-            freq_max REAL
+            freq_max REAL,
+            sector_count INTEGER DEFAULT 1
+        );
+        
+        CREATE TABLE IF NOT EXISTS sensor_gain_sector (
+            sensor_id INTEGER,
+            exp_id INTEGER,
+            sector_id INTEGER,
+            angle_start REAL,    -- degrees, e.g. 0.0
+            angle_end REAL,      -- degrees, e.g. 60.0
+            gain_db REAL,        -- dBi
+            PRIMARY KEY(sensor_id, exp_id, sector_id),
+            FOREIGN KEY(sensor_id) REFERENCES sensors(id),
+            FOREIGN KEY (exp_id)    REFERENCES experiments(id)
         );
 
         -- Table: Sensor Experiments
@@ -41,9 +54,7 @@ class DatabaseManager:
             sensor_up_id INTEGER PRIMARY KEY AUTOINCREMENT,
             start_time TIMESTAMP,
             end_time TIMESTAMP,
-            angle REAL,
             sensor_noise REAL,
-            receiver_antenna_gain REAL,
             received_thermal_noise_power REAL,
             sinr REAL,
             active INTEGER,
@@ -173,13 +184,14 @@ class DatabaseManager:
         self.cursor.execute("SELECT * FROM sensors")
         return self.cursor.fetchall()
 
-    def set_sensor(self, sensor_id, sensor_type, sensitivity, sinr_threshold, freq_min, freq_max):
+    def set_sensor(self, sensor_type, sensitivity, sinr_threshold, freq_min, freq_max, sector_count=1):
         self.cursor.execute("""
-            INSERT OR REPLACE INTO sensors (id, type, sensitivity, sinr_threshold, freq_min, freq_max) 
+            INSERT OR REPLACE INTO sensors (type, sensitivity, sinr_threshold, freq_min, freq_max, sector_count) 
             VALUES (?, ?, ?, ?, ?, ?)""",
-            (sensor_id, sensor_type, sensitivity, sinr_threshold, freq_min, freq_max)
+            (sensor_type, sensitivity, sinr_threshold, freq_min, freq_max, sector_count)
         )
         self.conn.commit()
+        return self.cursor.lastrowid
 
     def get_sensor_info_by_experiment(self, exp_id):
         self.cursor.execute("""
@@ -190,6 +202,30 @@ class DatabaseManager:
              WHERE se.exp_id = ?
         """, (exp_id,))
         return self.cursor.fetchall()
+
+    def set_sensor_gain_sector(self, sensor_id, exp_id, sector_id,
+                               angle_start, angle_end, gain_db):
+        self.cursor.execute("""
+            INSERT OR REPLACE INTO sensor_gain_sector
+                (sensor_id, exp_id, sector_id, angle_start, angle_end, gain_db)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (sensor_id, exp_id, sector_id, angle_start, angle_end, gain_db))
+        self.conn.commit()
+
+    def load_sensor_patterns(self, exp_id):
+        """
+        Returns: { sensor_id: [(start,end,gain), …] }
+        """
+        self.cursor.execute("""
+          SELECT sensor_id, angle_start, angle_end, gain_db
+            FROM sensor_gain_sector
+           WHERE exp_id = ?
+           ORDER BY sensor_id, sector_id
+        """, (exp_id,))
+        patterns = {}
+        for sid, a0, a1, g in self.cursor.fetchall():
+            patterns.setdefault(sid, []).append((a0, a1, g))
+        return patterns
 
     # Getters and Setters for Sensor Experiments
     def get_sensor_exp(self):
@@ -227,13 +263,14 @@ class DatabaseManager:
         """, (exp_id, timestamp, timestamp))
         return self.cursor.fetchall()
 
-    def set_sensor_up_time(self, exp_id, sensor_id, start_time, end_time, angle, sensor_noise,
-                           receiver_antenna_gain, received_thermal_noise_power, sinr, active):
+    def set_sensor_up_time(self, exp_id, sensor_id, start_time, end_time, sensor_noise,
+                           received_thermal_noise_power, sinr, active):
         self.cursor.execute("""
-            INSERT OR REPLACE INTO sensor_up_time (exp_id, sensor_id, start_time, end_time, angle, sensor_noise, receiver_antenna_gain, received_thermal_noise_power, sinr, active)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (exp_id, sensor_id, start_time, end_time, angle, sensor_noise, receiver_antenna_gain,
-              received_thermal_noise_power, sinr, active))
+            INSERT OR REPLACE INTO sensor_up_time (exp_id, sensor_id, start_time, end_time, sensor_noise, 
+            received_thermal_noise_power, sinr, active)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """, (exp_id, sensor_id, start_time, end_time, sensor_noise, received_thermal_noise_power, sinr,
+              active))
         self.conn.commit()
 
     def update_sensor_metrics(self, sensor_up_id, thermal_noise, sinr, active):
@@ -334,3 +371,30 @@ class DatabaseManager:
         """
         self.cursor.execute(query, (exp_id,))
         return self.cursor.fetchall()
+
+    def get_next_experiment_id(self):
+        """
+        Return the next experiment ID by taking MAX(id) + 1, or 1 if no experiments exist.
+        """
+        self.cursor.execute("SELECT MAX(id) FROM experiments")
+        row = self.cursor.fetchone()
+        max_id = row[0] if row and row[0] is not None else 0
+        return max_id + 1
+
+    def get_next_topography_id(self):
+        """
+        Return the next topography ID by taking MAX(id) + 1, or 1 if none exist.
+        """
+        self.cursor.execute("SELECT MAX(id) FROM topography")
+        row = self.cursor.fetchone()
+        max_id = row[0] if row and row[0] is not None else 0
+        return max_id + 1
+
+    def get_next_environment_id(self):
+        """
+        Return the next environment ID by taking MAX(id) + 1, or 1 if none exist.
+        """
+        self.cursor.execute("SELECT MAX(id) FROM environment")
+        row = self.cursor.fetchone()
+        max_id = row[0] if row and row[0] is not None else 0
+        return max_id + 1
