@@ -99,7 +99,7 @@ def single_mountain_simulation(db, num_drones=2, num_sensors=3, region_size=(500
                    num_mountains=num_mountains, num_steps=num_steps, simulation_type="mountain")
 
 #4. Mountain Range Simulation: 2 drones, 3 sensors, and 5 mountains
-def mountain_range_simulation(db, num_drones=2, num_sensors=3, region_size=(5000, 5000), height=100):
+def mountain_range_simulation(db, num_drones=2, num_sensors=3, region_size=(5000, 5000), height=500):
     exp_id = 4
     topography_id = 4
     env_id = 4

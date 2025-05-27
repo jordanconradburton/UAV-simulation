@@ -82,7 +82,7 @@ def _setup_mountains(db, num_mountains, region_size):
     for mountain_id in range(1, num_mountains + 1):
         mx = random.uniform(0, region_size[0])
         my = random.uniform(0, region_size[1])
-        side_length = random.uniform(1, 50)
+        side_length = random.uniform(50, 1000)
         mheight = random.uniform(50, 500)
 
         db.cursor.execute(
