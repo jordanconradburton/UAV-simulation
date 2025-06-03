@@ -17,6 +17,12 @@ TODO:
 
 3. is there a range for transmitter gain or set to 0.0?
 - is this a set value per drone or can it change along the trajectory?
+
+4. what are different scanning rates for the sensors?
+
+5. is it correct to have different region sizes as coded below?
+
+6. is it correct to change the drone radio frequency randomly all the time?
 """
 
 def run_simulation(
@@ -44,7 +50,7 @@ def run_simulation(
     num_drones    = num_drones  or random.randint(1, 8)
     region_size   = region_size or (random.randint(100, 5000), random.randint(100, 5000))
     sensor_height = sensor_height  or 100           #TODO: check what is the maximum z for sensor placement
-    num_mountains = num_mountains or random.randint(4, 5)
+    num_mountains = num_mountains or random.randint(0, 5)
     target_height = target_height or 500
 
     # ------- environment setup -------
@@ -73,7 +79,6 @@ def run_simulation(
     start, end = get_earliest_and_latest_times(trajectories)
     simulate_sensor_up_times(db, exp_id, start=start, end=end)
     run_detection_simulation(db, exp_id, trajectories)
-    compute_metrics(db, exp_id)
 
     # ------- visualize -------
     visualize_simulation(db, exp_id, trajectories, region=region_size)

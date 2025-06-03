@@ -22,6 +22,7 @@ class DatabaseManager:
             sector_count INTEGER DEFAULT 1
         );
         
+        --Table: Sensor Gain Sectors
         CREATE TABLE IF NOT EXISTS sensor_gain_sector (
             sensor_id INTEGER,
             exp_id INTEGER,
@@ -81,7 +82,8 @@ class DatabaseManager:
             transmitter_antenna_gain REAL,
             properties TEXT, 
             freq_min REAL,
-            freq_max REAL
+            freq_max REAL,
+            bandwidth REAL
         );
 
         -- Table: Drone Experiments
@@ -195,7 +197,7 @@ class DatabaseManager:
 
     def get_sensor_info_by_experiment(self, exp_id):
         self.cursor.execute("""
-            SELECT s.id, s.type, s.sensitivity, s.sinr_threshold, s.freq_min, s.freq_max
+            SELECT s.id, s.type, s.sensitivity, s.sinr_threshold, s.freq_min, s.freq_max, s.sector_count
               FROM sensors AS s
               JOIN sensor_exp AS se 
                 ON s.id = se.sensor_id
@@ -234,6 +236,14 @@ class DatabaseManager:
 
     def get_sensors_by_exp_id(self, exp_id):
         self.cursor.execute("SELECT * FROM sensor_exp WHERE exp_id = ?", (exp_id,))
+        return self.cursor.fetchall()
+
+    def get_sensor_exp_by_exp_id_and_sensor_id(self, exp_id, sensor_id):
+        self.cursor.execute("""
+            SELECT * FROM sensor_exp
+            WHERE exp_id = ?
+            AND sensor_id = ?
+        """, (exp_id, sensor_id))
         return self.cursor.fetchall()
 
     def set_sensor_exp(self, exp_id, sensor_id, sensor_exp_id, x, y, z):
@@ -286,6 +296,13 @@ class DatabaseManager:
         self.cursor.execute("SELECT * FROM sensor_detections")
         return self.cursor.fetchall()
 
+    def get_sensor_detections_by_sensor_up_id(self, sensor_up_id):
+        self.cursor.execute("""
+            SELECT * FROM sensor_detections
+            WHERE sensor_up_id = ?
+        """, (sensor_up_id,))
+        return self.cursor.fetchall()
+
     def set_sensor_detection(self, sensor_up_id, drone_id, received_power, received_signal_bandwidth):
         self.cursor.execute("""
             INSERT INTO sensor_detections (sensor_up_id, drone_id, received_power, received_signal_bandwidth)
@@ -303,13 +320,13 @@ class DatabaseManager:
         return self.cursor.fetchone()  # Use fetchone() since there should only be one drone per ID
 
     def set_drone(self, drone_id, drone_type, drone_transmitter_power, transmitter_antenna_gain, properties,
-                  freq_min, freq_max):
+                  freq_min, freq_max, bandwidth):
         self.cursor.execute("""
             INSERT OR REPLACE INTO drones (id, drone_type, drone_transmitter_power, transmitter_antenna_gain, 
-            properties, freq_min, freq_max)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            properties, freq_min, freq_max, bandwidth)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """, (drone_id, drone_type, drone_transmitter_power, transmitter_antenna_gain, properties,
-              freq_min, freq_max))
+              freq_min, freq_max, bandwidth))
         self.conn.commit()
 
     # Getters and Setters for Drone Experiments
@@ -349,6 +366,16 @@ class DatabaseManager:
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (id, drone_id, exp_id, time, speed, start_x, start_y, start_z, end_x, end_y, end_z))
         self.conn.commit()
+
+    def get_drone_exp_time_by_drone_and_experiment(self, exp_id, drone_id):
+        """
+        Return all trajectory records for a specific drone in a specific experiment.
+        """
+        self.cursor.execute(
+            "SELECT * FROM drone_exp_time WHERE exp_id = ? AND drone_id = ? ORDER BY time",
+            (exp_id, drone_id)
+        )
+        return self.cursor.fetchall()
 
     # Getters and Setters for Experiments
     def get_experiments(self):
