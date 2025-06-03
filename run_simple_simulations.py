@@ -23,6 +23,9 @@ TODO:
 5. is it correct to have different region sizes as coded below?
 
 6. is it correct to change the drone radio frequency randomly all the time?
+
+7. does a drone's bandwidth stay the same throughout the experiment?
+how is it determined? is it the range of the radio frequency band?
 """
 
 def run_simulation(
