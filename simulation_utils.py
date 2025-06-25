@@ -1,8 +1,7 @@
 import random
-import math
-from datetime import datetime, timedelta
+from datetime import timedelta
 
-from calculations import calculate_signal_power, calculate_thermal_noise, calculate_sinr, is_sensor_active
+from calculations import *
 from MountainSightCalculations import segment_intersects_mountain
 
 FREQUENCY_BANDS_HZ = [
@@ -25,7 +24,7 @@ def simulate_sensor_up_times(db, exp_id, start, end):
                 exp_id, sensor_id,
                 start_time=current_time, end_time=current_time + timedelta(seconds=1),
                 sensor_noise=5, received_thermal_noise_power=None, sinr=None, active=True
-            )
+            ) #TODO: what are values for sensor noise
         current_time += timedelta(seconds=1)
 
 
@@ -194,7 +193,7 @@ def run_detection_simulation(db, exp_id, drone_trajectories: dict):
                         rx_gain = gain_db
                         break
 
-                distance = math.sqrt((dx - sx) ** 2 + (dy - sy) ** 2 + (dz - sz) ** 2)
+                distance = calculate_distance((dx, dy, dz), (sx, sy, sz))
                 prx = calculate_signal_power(tx_power, distance, freq_hz, tx_gain, rx_gain)
                 signal_powers.append((drone_id, prx, bandwidth))
 
@@ -202,8 +201,6 @@ def run_detection_simulation(db, exp_id, drone_trajectories: dict):
                 print(f"  Sensor {sensor_id} at ({sx:.1f}, {sy:.1f}, {sz:.1f}) → Prx: {prx:.2f} dBm")
                 print("Distance: ", distance)
 
-            # Identify lead UAV
-            print("Signal powers: ", signal_powers)
             if not signal_powers:
                 break
 
@@ -221,7 +218,9 @@ def run_detection_simulation(db, exp_id, drone_trajectories: dict):
                         db.set_sensor_detection(sensor_up_id=sensor_up_id, drone_id=drone_id,
                                         received_power=prx, received_signal_bandwidth=bandwidth)
                         print(f"      → Detection occurred: Sensor {sensor_id}, Drone {drone_id}")
+                    else:
+                        print(f"      → No detection: Prx: {prx:.2f} dBm, Sensor Sensitivity: {sensitivity:.2f} dBm")
 
                 db.update_sensor_metrics(sensor_up_id=sensor_up_id, thermal_noise=pthermal, sinr=sinr, active=active)
             else:
-                print("      → No detection")
+                print(f"      → No detection: Sensor active: {active}")

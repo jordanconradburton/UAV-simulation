@@ -1,11 +1,12 @@
+from tqdm import tqdm
 import DatabaseManager as dbm
-from calculations import *
 from simulation_utils import *
 from simulate_environment import (setup_experiment, setup_topography, setup_environment_record,
                                   link_experiment_environment, setup_sensors)
 from simulate_trajectories import (generate_random_trajectories,
                                    get_earliest_and_latest_times, insert_drone_trajectories_and_frequencies)
 from visualization_utils import visualize_simulation
+from model_preprocessing import *
 
 
 """
@@ -20,12 +21,13 @@ TODO:
 
 4. what are different scanning rates for the sensors?
 
-5. is it correct to have different region sizes as coded below?
+5. is it correct to change the drone radio frequency randomly all the time?
 
-6. is it correct to change the drone radio frequency randomly all the time?
-
-7. does a drone's bandwidth stay the same throughout the experiment?
+6. does a drone's bandwidth stay the same throughout the experiment?
 how is it determined? is it the range of the radio frequency band?
+
+7. what is a normal range of values for sensor noise?
+how does this affect the calculations?
 """
 
 def run_simulation(
@@ -49,17 +51,24 @@ def run_simulation(
     env_id  = db.get_next_environment_id()
 
     # ------- randomize defaults -------
-    num_sensors   = num_sensors or random.randint(3, 20)
-    num_drones    = num_drones  or random.randint(1, 8)
-    region_size   = region_size or (random.randint(100, 5000), random.randint(100, 5000))
-    sensor_height = sensor_height  or 100           #TODO: check what is the maximum z for sensor placement
-    num_mountains = num_mountains or random.randint(0, 5)
-    target_height = target_height or 500
+    if num_sensors is None:
+        num_sensors   =  random.randint(3, 20)
+    if num_drones is None:
+        num_drones    = random.randint(1, 8)
+    if region_size is None:
+        region_size   = (random.randint(100, 5000), random.randint(100, 5000))
+    if sensor_height is None:
+        sensor_height = 100           #TODO: check what is the maximum z for sensor placement
+    if num_mountains is None:
+        num_mountains = random.randint(0, 5)
+    if target_height is None:
+        target_height = 500
 
     # ------- environment setup -------
     setup_experiment(db, exp_id, region_size=region_size)
     setup_topography(db, topo_id, region_size=region_size, num_mountains=num_mountains)
-    setup_environment_record(db, env_id, disturbance=random.uniform(0,1), visibility=random.uniform(10,100))
+    setup_environment_record(db, env_id, disturbance=random.uniform(0,1),
+                             visibility=random.uniform(10,100))
     link_experiment_environment(db, exp_id, topo_id, env_id)
     setup_sensors(db, exp_id, num_sensors=num_sensors, region_size=region_size, height=sensor_height)
 
@@ -78,16 +87,28 @@ def run_simulation(
 
     insert_drone_trajectories_and_frequencies(db, exp_id, trajectories)
 
-    # ------- run and record detections -------
+    # ------- run & record detections -------
     start, end = get_earliest_and_latest_times(trajectories)
     simulate_sensor_up_times(db, exp_id, start=start, end=end)
     run_detection_simulation(db, exp_id, trajectories)
 
     # ------- visualize -------
-    visualize_simulation(db, exp_id, trajectories, region=region_size)
+    # visualize_simulation(db, exp_id, trajectories, region=region_size)
+
+    # ------- tables for model preprocessing -------
+    build_sensor_distances_table(db, exp_id)
 
 
 if __name__ == '__main__':
-    db = dbm.DatabaseManager(db_name='simple_simulation.db')
-    run_simulation(db)
+    db_name = '1000simple_simulation.db'
+    db = dbm.DatabaseManager(db_name=db_name)
+    num_exp = 1000
+
+    for i in tqdm(range(num_exp)):
+        run_simulation(db, num_drones=1, num_mountains=0, region_size=(5000, 5000))
+
     db.conn.close()
+    export_all_sensor_detection_summary(db_name, "1000_mountains0_drone1_detections.csv")
+    export_sensor_distances_to_csv(db_name, "1000_mountains0_drone1_sensor_distances.csv")
+    export_sensor_gain_sectors_to_csv(db_name, "1000_mountains0_drone1_sensor_gain_sectors.csv")
+    export_sensor_information_to_csv(db_name, "1000_mountains0_drone1_sensor_information.csv")

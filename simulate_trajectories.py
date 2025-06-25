@@ -1,18 +1,20 @@
 import random
-import math
 from datetime import datetime, timedelta
 from MountainSightCalculations import segment_intersects_mountain, point_in_mountain
 from calculations import *
 
-def simulate_random_trajectory(db, exp_id, drone_id, region=(5000, 5000), height=500, num_steps=60, start_time=None,
-                               freq_range=(900e6, 5e9), change_prob=0.1, sensor_safe_distance=5):
+
+def simulate_random_trajectory(db, exp_id, drone_id,
+                               region=(5000, 5000), height=500, num_steps=60, start_time=None,
+                               freq_range=(900e6, 5e9), change_dir_prob=0.2, change_speed_prob=0.1,
+                               change_pitch_prob=0.1, sensor_safe_distance=5):
 
     mountains = db.get_mountains_by_experiment(exp_id)
     sensors  = db.get_sensors_by_exp_id(exp_id)
     sensor_positions = {s[1]:(s[3],s[4],s[5]) for s in sensors}
 
     if start_time is None:
-        start_time = datetime(2025, 3, 23, 12, 0, 0)
+        start_time = datetime.now()
 
     time_interval = timedelta(seconds=1)
 
@@ -27,32 +29,37 @@ def simulate_random_trajectory(db, exp_id, drone_id, region=(5000, 5000), height
             break
 
     current_freq = random.uniform(*freq_range)
+    speed = random.uniform(5, 50)
 
     trajectory = []
-    # Start with a random initial direction (angle in radians)
     current_angle = random.uniform(0, 2 * math.pi)
-    # Maximum change in angle per time step (in radians)
     max_turn = math.pi / 8  # About 22.5 degrees
 
     # Vertical movement: start with a random pitch (vertical angle)
     current_pitch = random.uniform(-math.pi/16, math.pi/16)
     vertical_max_turn = math.pi / 16  # Maximum change in vertical angle per time step
 
-    for i in range(num_steps):
-        if random.random() < change_prob:
-            current_freq = random.uniform(*freq_range)
 
-        # Use a random speed within the allowed range
-        speed = random.uniform(5, 50)
-        # Slightly change the current angle instead of choosing a completely new one
-        delta_angle = random.uniform(-max_turn, max_turn)
-        current_angle += delta_angle
+    for i in range(num_steps):
+        # if random.random() < change_freq_prob:
+        #     current_freq = random.uniform(*freq_range)
+        # TODO: does drone radio frequency change randomly all the time? or is this part of the jamming section?
+
+        if random.random() < change_speed_prob:
+            speed = random.uniform(5, 50)
+
+        if random.random() < change_dir_prob:
+            delta = random.uniform(-max_turn, max_turn)
+            current_angle += delta
+
         dx = speed * math.cos(current_angle)
         dy = speed * math.sin(current_angle)
 
-        # Update vertical (altitude) direction with a small random pitch change
-        delta_pitch = random.uniform(-vertical_max_turn, vertical_max_turn)
-        current_pitch += delta_pitch
+        # maybe adjust pitch
+        if random.random() < change_pitch_prob:
+            dp = random.uniform(-vertical_max_turn, vertical_max_turn)
+            current_pitch += dp
+
         dz = speed * math.sin(current_pitch)
 
         # Update position while keeping within region bounds

@@ -1,7 +1,7 @@
 import math
 
-def calculate_distance(drone_pos, sensor_pos):
-    return math.sqrt(sum((dp - sp) ** 2 for dp, sp in zip(drone_pos, sensor_pos)))
+def calculate_distance(pos1, pos2):
+    return math.sqrt(sum((p1 - p2) ** 2 for p1, p2 in zip(pos1, pos2)))
 
 def calculate_signal_power(Ptx, distance, frequency_hz, Gt=0, Gr=0):
     if distance <= 0 or frequency_hz <= 0:

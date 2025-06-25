@@ -1,7 +1,4 @@
 import sqlite3
-import pandas as pd
-from sqlalchemy import create_engine
-
 
 class DatabaseManager:
     def __init__(self, db_name='sensor_experiments.db'):
@@ -177,6 +174,24 @@ class DatabaseManager:
             FOREIGN KEY (topography_id) REFERENCES topography(id),
             FOREIGN KEY (mountain_id) REFERENCES mountains(id)
         );
+        
+        --Table: Sensor Distances
+        CREATE TABLE IF NOT EXISTS sensor_distances (
+                exp_id        INTEGER,
+                sensor1_id    INTEGER,
+                sensor1_x REAL,
+                sensor1_y REAL,
+                sensor1_z REAL,
+                sensor2_id    INTEGER,
+                sensor2_x REAL,
+                sensor2_y REAL,
+                sensor2_z REAL,
+                distance      REAL,
+                PRIMARY KEY(exp_id, sensor1_id, sensor2_id),
+                FOREIGN KEY(sensor1_id) REFERENCES sensors(id),
+                FOREIGN KEY(sensor2_id) REFERENCES sensors(id),
+                FOREIGN KEY(exp_id) REFERENCES experiments(id)
+            );
         """
         self.cursor.executescript(schema_sql)
         self.conn.commit()
@@ -203,6 +218,10 @@ class DatabaseManager:
                 ON s.id = se.sensor_id
              WHERE se.exp_id = ?
         """, (exp_id,))
+        return self.cursor.fetchall()
+
+    def get_sensor_gain_sectors(self):
+        self.cursor.execute("SELECT * FROM sensor_gain_sector")
         return self.cursor.fetchall()
 
     def set_sensor_gain_sector(self, sensor_id, exp_id, sector_id,
@@ -384,7 +403,7 @@ class DatabaseManager:
 
     def set_experiment(self, exp_id, date, description, parameters):
         self.cursor.execute(
-            "INSERT OR REPLACE INTO experiments (id, date, description, parameters) VALUES (?, ?, ?, ?)",
+            """INSERT OR REPLACE INTO experiments (id, date, description, parameters) VALUES (?, ?, ?, ?)""",
             (exp_id, date, description, parameters))
         self.conn.commit()
 
@@ -398,6 +417,18 @@ class DatabaseManager:
         """
         self.cursor.execute(query, (exp_id,))
         return self.cursor.fetchall()
+
+    def get_sensors_distances(self):
+        self.cursor.execute("SELECT * FROM sensor_distances")
+        return self.cursor.fetchall()
+
+    def set_sensors_distances(self, exp_id, sid_i, si_x, si_y, si_z, sid_j, sj_x, sj_y, sj_z, d):
+        self.cursor.execute(
+            """INSERT INTO sensor_distances (exp_id, sensor1_id, sensor1_x, sensor1_y, sensor1_z, 
+            sensor2_id, sensor2_x, sensor2_y, sensor2_z, distance) 
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (exp_id, sid_i, si_x, si_y, si_z, sid_j, sj_x, sj_y, sj_z, d))
+        self.conn.commit()
 
     def get_next_experiment_id(self):
         """
