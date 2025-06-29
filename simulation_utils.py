@@ -149,7 +149,7 @@ def run_detection_simulation(db, exp_id, drone_trajectories: dict):
 
     # Main simulation loop: iterate in sorted order by timestamp.
     for timestamp in sorted(drone_positions_by_time.keys()):
-        print(f"Time: {timestamp}")
+        # print(f"Time: {timestamp}")
         drone_positions = drone_positions_by_time[timestamp]
         sensor_up_times = db.get_active_sensor_up_times(exp_id, timestamp)  # Only entries for this timestamp
 
@@ -171,17 +171,16 @@ def run_detection_simulation(db, exp_id, drone_trajectories: dict):
                 freq_hz = freqs[(exp_id, drone_id)]
 
                 # Check drone frequency in sensor range
-                fmin, fmax = freq_ranges[sensor_id]
                 in_range = _drone_frequency_in_sensor_range(freq_hz, freq_ranges[sensor_id])
                 if not in_range:
-                    print(f"      → Drone {drone_id} freq {freq_hz/1e6:,.2f} MHz  outside sensor {sensor_id} range "
-                          f"{fmin/1e6:,.2f}–{fmax/1e6:,.2f} MHz ")
+                    # print(f"      → Drone {drone_id} freq {freq_hz/1e6:,.2f} MHz  outside sensor {sensor_id} range "
+                    #       f"{fmin/1e6:,.2f}–{fmax/1e6:,.2f} MHz ")
                     break
 
                 # Check mountain blockage.
                 mountain_blocked = _line_of_sight_blocked(sx, sy, sz, dx, dy, dz, mountain_list)
                 if mountain_blocked:
-                    print(f"      → Line of sight blocked by a mountain for sensor {sensor_id} and drone {drone_id}")
+                    # print(f"      → Line of sight blocked by a mountain for sensor {sensor_id} and drone {drone_id}")
                     break
 
                 # Calculate G_r according to sensor sector
@@ -197,9 +196,9 @@ def run_detection_simulation(db, exp_id, drone_trajectories: dict):
                 prx = calculate_signal_power(tx_power, distance, freq_hz, tx_gain, rx_gain)
                 signal_powers.append((drone_id, prx, bandwidth))
 
-                print(f"  Drone {drone_id} position: ({dx:.1f}, {dy:.1f}, {dz:.1f})")
-                print(f"  Sensor {sensor_id} at ({sx:.1f}, {sy:.1f}, {sz:.1f}) → Prx: {prx:.2f} dBm")
-                print("Distance: ", distance)
+                # print(f"  Drone {drone_id} position: ({dx:.1f}, {dy:.1f}, {dz:.1f})")
+                # print(f"  Sensor {sensor_id} at ({sx:.1f}, {sy:.1f}, {sz:.1f}) → Prx: {prx:.2f} dBm")
+                # print("Distance: ", distance)
 
             if not signal_powers:
                 break
@@ -217,10 +216,10 @@ def run_detection_simulation(db, exp_id, drone_trajectories: dict):
                     if prx > sensitivity:
                         db.set_sensor_detection(sensor_up_id=sensor_up_id, drone_id=drone_id,
                                         received_power=prx, received_signal_bandwidth=bandwidth)
-                        print(f"      → Detection occurred: Sensor {sensor_id}, Drone {drone_id}")
-                    else:
-                        print(f"      → No detection: Prx: {prx:.2f} dBm, Sensor Sensitivity: {sensitivity:.2f} dBm")
+                    #     print(f"      → Detection occurred: Sensor {sensor_id}, Drone {drone_id}")
+                    # else:
+                    #     print(f"      → No detection: Prx: {prx:.2f} dBm, Sensor Sensitivity: {sensitivity:.2f} dBm")
 
                 db.update_sensor_metrics(sensor_up_id=sensor_up_id, thermal_noise=pthermal, sinr=sinr, active=active)
-            else:
-                print(f"      → No detection: Sensor active: {active}")
+            # else:
+            #     print(f"      → No detection: Sensor active: {active}")

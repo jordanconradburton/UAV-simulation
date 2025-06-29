@@ -107,8 +107,8 @@ if __name__ == '__main__':
     for i in tqdm(range(num_exp)):
         run_simulation(db, num_drones=1, num_mountains=0, region_size=(5000, 5000))
 
+    export_all_sensor_detection_summary(db, "1st_Trial_Data_Files/1000_mountains0_drone1_detections.csv")
+    export_sensor_distances_to_csv(db, "1st_Trial_Data_Files/1000_mountains0_drone1_sensor_distances.csv")
+    export_sensor_gain_sectors_to_csv(db, "1st_Trial_Data_Files/1000_mountains0_drone1_sensor_gain_sectors.csv")
+    export_sensor_information_to_csv(db, "1st_Trial_Data_Files/1000_mountains0_drone1_sensor_information.csv")
     db.conn.close()
-    export_all_sensor_detection_summary(db_name, "1000_mountains0_drone1_detections.csv")
-    export_sensor_distances_to_csv(db_name, "1000_mountains0_drone1_sensor_distances.csv")
-    export_sensor_gain_sectors_to_csv(db_name, "1000_mountains0_drone1_sensor_gain_sectors.csv")
-    export_sensor_information_to_csv(db_name, "1000_mountains0_drone1_sensor_information.csv")

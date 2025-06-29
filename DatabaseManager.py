@@ -288,7 +288,7 @@ class DatabaseManager:
             SELECT * FROM sensor_up_time
             WHERE exp_id = ?
             AND start_time <= ?
-            AND end_time >= ?
+            AND end_time > ?
         """, (exp_id, timestamp, timestamp))
         return self.cursor.fetchall()
 

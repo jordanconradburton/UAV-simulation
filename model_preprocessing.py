@@ -4,6 +4,7 @@ import math
 import pandas as pd
 from collections import defaultdict
 from datetime import datetime
+from tqdm import tqdm
 
 def build_sensor_distances_table(db, exp_id):
     """
@@ -29,6 +30,7 @@ def build_sensor_distances_table(db, exp_id):
 
 
 def export_sensor_information_to_csv(db, csv_path):
+    print("Exporting all sensor information to CSV...")
     rows = db.get_sensors()
     df = pd.DataFrame(
         rows,
@@ -38,6 +40,7 @@ def export_sensor_information_to_csv(db, csv_path):
     print(f"Exported sensors to {csv_path}")
 
 def export_sensor_gain_sectors_to_csv(db, csv_path):
+    print("Exporting all sensor gain sectors to CSV...")
     rows = db.get_sensor_gain_sectors()
     df = pd.DataFrame(
         rows,
@@ -48,7 +51,8 @@ def export_sensor_gain_sectors_to_csv(db, csv_path):
 
 
 def export_sensor_distances_to_csv(db, csv_path):
-    rows = db.get_sensor_distances()
+    print("Exporting all sensor distances to CSV...")
+    rows = db.get_sensors_distances()
     df = pd.DataFrame(
         rows,
         columns=["exp_id", "sensor1_id", "x1", "y1", "z1", "sensor2_id", "x2", "y2", "z2", "d"]
@@ -67,6 +71,7 @@ def export_all_sensor_detection_summary(db, csv_path):
     """
     # fetch all experiment IDs
     exp_ids = [row[0] for row in db.get_experiments()]
+    print("Exporting all sensor detection summaries...")
 
     with open(csv_path, 'w', newline='') as f:
         writer = csv.writer(f)
@@ -81,7 +86,7 @@ def export_all_sensor_detection_summary(db, csv_path):
             "individual_powers"
         ])
 
-        for exp_id in exp_ids:
+        for exp_id in tqdm(exp_ids):
             # build up_time mapping: sensor_up_id -> (sensor_id, timestamp)
             up_rows = db.get_sensor_up_time_by_experiment(exp_id)
             up_map = {row[2]: (row[1],
