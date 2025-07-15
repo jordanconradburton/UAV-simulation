@@ -430,6 +430,13 @@ class DatabaseManager:
             (exp_id, sid_i, si_x, si_y, si_z, sid_j, sj_x, sj_y, sj_z, d))
         self.conn.commit()
 
+    def get_sensors_distances_by_exp(self, exp_id):
+        self.cursor.execute("""
+                SELECT * FROM sensor_distances
+                WHERE exp_id = ?
+                """, (exp_id,))
+        return self.cursor.fetchall()
+
     def get_next_experiment_id(self):
         """
         Return the next experiment ID by taking MAX(id) + 1, or 1 if no experiments exist.

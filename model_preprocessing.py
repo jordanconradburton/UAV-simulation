@@ -1,6 +1,5 @@
-from calculations import calculate_distance
+from calculations import calculate_distance, sum_powers_dbm
 import csv
-import math
 import pandas as pd
 from collections import defaultdict
 from datetime import datetime
@@ -113,9 +112,8 @@ def export_all_sensor_detection_summary(db, csv_path):
             # write one row per group
             for (sensor_id, ts), entries in det_group.items():
                 prx_list = [e[1] for e in entries]
-                # linear sum: dBm->mW, sum, then back to dBm
-                lin_sum = sum(10 ** (p/10) for p in prx_list)
-                total_dbm = 10 * math.log10(lin_sum) if lin_sum > 0 else float('-inf')
+                total_dbm = sum_powers_dbm(prx_list)
+
                 drone_ids = [e[0] for e in entries]
                 positions = [e[2] for e in entries]
                 writer.writerow([
