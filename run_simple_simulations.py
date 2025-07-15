@@ -111,7 +111,9 @@ if __name__ == '__main__':
     # export_sensor_distances_to_csv(db, "1st_Trial_Data_Files/1000_mountains0_drone1_sensor_distances.csv")
     # export_sensor_gain_sectors_to_csv(db, "1st_Trial_Data_Files/1000_mountains0_drone1_sensor_gain_sectors.csv")
     # export_sensor_information_to_csv(db, "1st_Trial_Data_Files/1000_mountains0_drone1_sensor_information.csv")
-    # db.conn.close()
 
     export_all_graphs_to_one_file(db, out_pt="1000_simple_simulations_graphs.pt")
+    export_drone_labels(db, csv_path="1000_simple_simulations_labels.csv")
+    db.conn.close()
+
     # visualize_graph_series(graphs)

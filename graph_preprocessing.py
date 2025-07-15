@@ -3,9 +3,15 @@ from calculations import sum_powers_dbm
 import torch
 from torch_geometric.data import Data
 
+import csv
+from collections import defaultdict
+from datetime import datetime
+
 import networkx as nx
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
+
+MAX_DRONES = 8
 
 #=== GRAPH FORMAT ===
 # Each graph snapshot is represented as a PyTorch-Geometric Data object:
@@ -107,7 +113,54 @@ def export_all_graphs_to_one_file(db, out_pt="all_experiments_graphs.pt"):
 
     print(f"Saving all {len(exp_ids)} experiments into `{out_pt}`")
     torch.save(all_graphs, out_pt)
-    db.conn.close()
+
+
+def export_drone_labels(db, csv_path, max_drones=MAX_DRONES):
+    """
+    Writes a CSV with one row per (experiment, timestamp):
+      exp_id, timestamp, num_drones,
+      drone_ids (padded list of length max_drones),
+      drone_positions (padded list of length max_drones of (x,y,z) tuples)
+    """
+    # collect all experiments
+    exp_ids = [row[0] for row in db.get_experiments()]
+
+    with open(csv_path, 'w', newline='') as f:
+        writer = csv.writer(f)
+        writer.writerow([
+            "exp_id", "timestamp", "num_drones",
+            "drone_ids", "drone_positions"
+        ])
+
+        for exp_id in exp_ids:
+            rows = db.get_drone_exp_time_by_exp_id(exp_id)
+            # group by timestamp
+            by_time = defaultdict(list)
+            for _, drone_id, _, ts, _, ex, ey, ez, *_ in rows:
+                # ensure datetime
+                if isinstance(ts, str):
+                    ts = datetime.fromisoformat(ts)
+                by_time[ts].append((drone_id, (ex, ey, ez)))
+
+            for ts in sorted(by_time):
+                entries = by_time[ts]
+                # sort by drone_id for consistency
+                entries.sort(key=lambda x: x[0])
+
+                num = len(entries)
+                # pad ids and positions
+                ids = [d for d,_ in entries] + [-1]*(max_drones - num)
+                pos = [p for _,p in entries] + [(0.0,0.0,0.0)]*(max_drones - num)
+
+                writer.writerow([
+                    exp_id,
+                    ts.isoformat(),
+                    num,
+                    ids,
+                    pos
+                ])
+
+    print(f"Exported drone label CSV to {csv_path}")
 
 
 def visualize_graph_series(graphs):

@@ -386,6 +386,10 @@ class DatabaseManager:
         """, (id, drone_id, exp_id, time, speed, start_x, start_y, start_z, end_x, end_y, end_z))
         self.conn.commit()
 
+    def get_drone_exp_time_by_exp_id(self, exp_id):
+        self.cursor.execute("SELECT * FROM drone_exp_time WHERE exp_id = ?", (exp_id,))
+        return self.cursor.fetchall()
+
     def get_drone_exp_time_by_drone_and_experiment(self, exp_id, drone_id):
         """
         Return all trajectory records for a specific drone in a specific experiment.
