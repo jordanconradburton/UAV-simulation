@@ -1,4 +1,4 @@
-from calculations import calculate_distance, sum_powers_dbm
+from Simulator.calculations import calculate_distance, sum_powers_dbm
 import csv
 import pandas as pd
 from collections import defaultdict

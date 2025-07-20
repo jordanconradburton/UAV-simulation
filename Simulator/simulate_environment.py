@@ -1,6 +1,6 @@
 import random
-from MountainSightCalculations import can_place_sensor
-from simulation_utils import FREQUENCY_BANDS_HZ
+from Simulator.MountainSightCalculations import can_place_sensor
+from Simulator.simulation_utils import FREQUENCY_BANDS_HZ
 
 def setup_experiment(db, exp_id, test_type="circle", region_size=(1000, 1000)):
     """
@@ -64,7 +64,8 @@ def setup_sensors(db, exp_id, region_size, num_sensors=5, height=500, sensor_typ
         sensitivity    = random.uniform(*sensitivity_range)
         sinr_threshold = random.uniform(*sinr_threshold_range)
         freq_min, freq_max = random.choice(FREQUENCY_BANDS_HZ)
-        sector_count = random.randint(1, 6)
+        # sector_count = random.randint(1, 6)
+        sector_count = random.choice([1, 2, 3, 6])
 
         sensor_id = db.set_sensor(sensor_type, sensitivity, sinr_threshold, freq_min, freq_max, sector_count)
         db.set_sensor_exp(exp_id, sensor_id, sensor_id, x, y, z)

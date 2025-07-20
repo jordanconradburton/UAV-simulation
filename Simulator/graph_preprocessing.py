@@ -1,5 +1,5 @@
-from MountainSightCalculations import segment_intersects_mountain
-from calculations import sum_powers_dbm
+from Simulator.MountainSightCalculations import segment_intersects_mountain
+from Simulator.calculations import sum_powers_dbm
 import torch
 from torch_geometric.data import Data
 

@@ -1,7 +1,7 @@
 import random
 from datetime import datetime, timedelta
-from MountainSightCalculations import segment_intersects_mountain, point_in_mountain
-from calculations import *
+from Simulator.MountainSightCalculations import segment_intersects_mountain, point_in_mountain
+from Simulator.calculations import *
 
 
 def simulate_random_trajectory(db, exp_id, drone_id,

@@ -1,12 +1,10 @@
-import DatabaseManager as dbm
-from simulation_utils import *
-from simulate_environment import (setup_experiment, setup_topography, setup_environment_record,
+from Simulator.simulation_utils import *
+from Simulator.simulate_environment import (setup_experiment, setup_topography, setup_environment_record,
                                   link_experiment_environment, setup_sensors)
-from simulate_trajectories import (generate_random_trajectories,
+from Simulator.simulate_trajectories import (generate_random_trajectories,
                                    get_earliest_and_latest_times, insert_drone_trajectories_and_frequencies)
-from visualization_utils import visualize_simulation
-from model_preprocessing import *
-from graph_preprocessing import *
+from Simulator.visualization_utils import visualize_simulation
+from Simulator.model_preprocessing import *
 
 
 """
@@ -99,21 +97,3 @@ def run_simulation(
     build_sensor_distances_table(db, exp_id)
 
 
-if __name__ == '__main__':
-    db_name = '1000simple_simulation.db'
-    db = dbm.DatabaseManager(db_name=db_name)
-    # num_exp = 1000
-    #
-    # for i in tqdm(range(num_exp)):
-    #     run_simulation(db, num_drones=1, num_mountains=0, region_size=(5000, 5000))
-    #
-    # export_all_sensor_detection_summary(db, "1st_Trial_Data_Files/1000_mountains0_drone1_detections.csv")
-    # export_sensor_distances_to_csv(db, "1st_Trial_Data_Files/1000_mountains0_drone1_sensor_distances.csv")
-    # export_sensor_gain_sectors_to_csv(db, "1st_Trial_Data_Files/1000_mountains0_drone1_sensor_gain_sectors.csv")
-    # export_sensor_information_to_csv(db, "1st_Trial_Data_Files/1000_mountains0_drone1_sensor_information.csv")
-
-    export_all_graphs_to_one_file(db, out_pt="1000_simple_simulations_graphs.pt")
-    export_drone_labels(db, csv_path="1000_simple_simulations_labels.csv")
-    db.conn.close()
-
-    # visualize_graph_series(graphs)

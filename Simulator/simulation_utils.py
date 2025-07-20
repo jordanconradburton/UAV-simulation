@@ -1,8 +1,8 @@
 import random
 from datetime import timedelta
 
-from calculations import *
-from MountainSightCalculations import segment_intersects_mountain
+from Simulator.calculations import *
+from Simulator.MountainSightCalculations import segment_intersects_mountain
 
 FREQUENCY_BANDS_HZ = [
     (433e6, 435e6),    # Band 1
