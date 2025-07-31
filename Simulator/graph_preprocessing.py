@@ -12,6 +12,7 @@ import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 
 MAX_DRONES = 8
+MAX_SECTORS = 6
 
 #=== GRAPH FORMAT ===
 # Each graph snapshot is represented as a PyTorch-Geometric Data object:
@@ -44,7 +45,7 @@ def build_experiment_graphs(db, exp_id):
     type2idx = {t:i for i,t in enumerate(unique_types)}
 
     patterns = db.load_sensor_patterns(exp_id)
-    max_sectors = max((len(secs) for secs in patterns.values()), default=0)
+    max_sectors = MAX_SECTORS
 
     # 1) Static node features
     static_feats = []
@@ -93,6 +94,8 @@ def build_experiment_graphs(db, exp_id):
             idx = id_to_idx[sid]
             prx_list = [det[3] for det in dets]
             prx_sum[idx] = sum_powers_dbm(prx_list)
+            if prx_sum[idx] == float('-inf'):
+                print("-inf detected")
         x_dyn = torch.tensor(prx_sum, dtype=torch.float).view(N,1)
         x = torch.cat([x_static, x_dyn], dim=1)
 

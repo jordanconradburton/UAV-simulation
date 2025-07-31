@@ -3,12 +3,10 @@ import math
 def calculate_distance(pos1, pos2):
     return math.sqrt(sum((p1 - p2) ** 2 for p1, p2 in zip(pos1, pos2)))
 
-def sum_powers_dbm(prx_list):
+def sum_powers_dbm(prx_list, floor_dbm=-120.0):
     if not prx_list:
-        return float('-inf')
+        return floor_dbm
     lin_sum = sum(10 ** (p / 10) for p in prx_list)
-    if lin_sum <= 0:
-        return float('-inf')
     return 10 * math.log10(lin_sum)
 
 def calculate_signal_power(Ptx, distance, frequency_hz, Gt=0, Gr=0):
