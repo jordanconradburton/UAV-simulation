@@ -1,14 +1,16 @@
 from Graph_Models.Datasets import GraphSnapshotDataset as gd
-from Graph_Models import BasicGATEncoder as enc
+from Graph_Models.encoders import VanillaGATEncoder as enc
 from Graph_Models import BasicGraphDecoder as dec
 from Graph_Models import BasicGraphAutoencoder as autoencoder
-from Graph_Models.utils import *
+from loss_functions import *
+from utils import *
 from tqdm import tqdm
 from Graph_Models.visualization_utils import *
 
 MAX_NODES = 20
 
 """
+TODO
 To tune:
 1. number of attention heads per layer
 2. dropout rate
@@ -22,12 +24,14 @@ To tune:
 """
 
 
-def run_pipeline(graphs_path, batch_size=16, lr=1e-3, epochs=50):
-    # ✅ Best config: {'batch_size': 16, 'lr': 0.001, 'embedding_dim': 64, 'attn_heads': 4,
+def run_encoder_pipeline(graphs_path, label_file, batch_size=16, lr=1e-3, epochs=50, feat_weights=None,
+                         embeddings_save_path="Graph_Models/outputs/embeddings/",
+                         plots_save_path="Graph_Models/outputs/plots/"):
+    # ✅ Best config (GAT non-weighted): {'batch_size': 16, 'lr': 0.001, 'embedding_dim': 64, 'attn_heads': 4,
     # 'dropout': 0.2, 'hidden_channels': 128, 'activation': 'relu'}
 
     # ------ 1. Data preparation ------
-    simple_dataset = gd.GraphSnapshotDataset(graphs_path)
+    simple_dataset = gd.GraphSnapshotDataset(graphs_path, label_file)
     device = get_device()
 
     # check_feature_ranges(simple_dataset)
@@ -35,8 +39,7 @@ def run_pipeline(graphs_path, batch_size=16, lr=1e-3, epochs=50):
     #                                                  autoencoder.BasicGraphAutoencoder, extract_graph_targets,
     #                                                  graph_reconstruction_loss, max_nodes=MAX_NODES, device=device)
 
-
-    train_loader, val_loader, test_loader = create_dataloaders(simple_dataset, batch_size=batch_size)
+    train_loader, val_loader, test_loader = create_encoder_dataloaders(simple_dataset, batch_size=batch_size)
 
     # ------ 2. Autoencoder model creation ------
     num_features = simple_dataset[0].x.size(1)
@@ -50,20 +53,21 @@ def run_pipeline(graphs_path, batch_size=16, lr=1e-3, epochs=50):
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
 
     # ------ 3. Model training ------
-    train_losses, val_losses = train_model(train_loader, val_loader, model, optimizer, device, num_epochs=epochs)
-    plot_losses(train_losses, val_losses, save_path="Graph_Models/outputs/plots/loss_curve.png")
+    train_losses, val_losses, feat_weights = train_model(train_loader, val_loader, model, optimizer, device,
+                                                         num_epochs=epochs, feat_weights=feat_weights)
+    plot_losses(train_losses, val_losses, save_path=plots_save_path + "loss_curve.png")
 
     # ------ 4. Model testing ------
-    avg_loss, all_losses = evaluate_on_test(model, test_loader, device=device)
-    plot_test_loss_distribution(all_losses)
+    avg_loss, all_losses = evaluate_on_test(model, test_loader, device=device, feat_weights=feat_weights)
+    plot_test_loss_distribution(all_losses, save_path=plots_save_path + "test_loss_distribution.png")
 
-    # ------ 5. Visualizations ------
-    plot_graph_embeddings(model, test_loader, device, method='tsne')
-    plot_graph_embeddings(model, test_loader, device, method='pca')
+    # ------ 5. Save Embeddings ------
+    save_embeddings_with_labels(encoder, train_loader, device, save_path=embeddings_save_path + "train_embeddings_with_labels.pt")
+    save_embeddings_with_labels(encoder, val_loader, device, save_path=embeddings_save_path + "val_embeddings_with_labels.pt")
+    save_embeddings_with_labels(encoder, test_loader, device, save_path=embeddings_save_path + "test_embeddings_with_labels.pt")
 
 
-
-def train_model(train_loader, val_loader, model, optimizer, device, num_epochs=50, patience=5):
+def train_model(train_loader, val_loader, model, optimizer, device, num_epochs=50, patience=5, feat_weights=None):
     train_losses, val_losses = [], []
     best_val_loss = float('inf')
     no_improve_epochs = 0
@@ -79,12 +83,13 @@ def train_model(train_loader, val_loader, model, optimizer, device, num_epochs=5
             pred_feats, pred_counts = model(data)
             true_feats, true_counts = extract_graph_targets(data)
 
-            loss = graph_reconstruction_loss(
+            # default (unweighted)
+            loss = graph_reconstruction_loss_weighted(
                 pred_feats,
                 true_feats,
                 pred_counts,
                 true_counts,
-                max_nodes=MAX_NODES
+                feat_weights=feat_weights,
             )
 
             loss.backward()
@@ -103,13 +108,15 @@ def train_model(train_loader, val_loader, model, optimizer, device, num_epochs=5
                 pred_feats, pred_counts = model(data)
                 true_feats, true_counts = extract_graph_targets(data)
 
-                loss = graph_reconstruction_loss(
+                # default (unweighted)
+                loss = graph_reconstruction_loss_weighted(
                     pred_feats,
                     true_feats,
                     pred_counts,
                     true_counts,
-                    max_nodes=MAX_NODES
+                    feat_weights=feat_weights,
                 )
+
                 total_val_loss += loss.item()
 
         avg_val_loss = total_val_loss / len(val_loader)
@@ -133,11 +140,11 @@ def train_model(train_loader, val_loader, model, optimizer, device, num_epochs=5
     if best_model_state is not None:
         model.load_state_dict(best_model_state)
 
-    return train_losses, val_losses
+    return train_losses, val_losses, feat_weights
 
 
 @torch.no_grad()
-def evaluate_on_test(model, test_loader, device):
+def evaluate_on_test(model, test_loader, device, feat_weights=None):
     model.eval()
     total_loss = 0.0
     all_losses = []
@@ -147,13 +154,15 @@ def evaluate_on_test(model, test_loader, device):
         pred_feats, pred_counts = model(data)
         true_feats, true_counts = extract_graph_targets(data)
 
-        loss = graph_reconstruction_loss(
+        # default (unweighted)
+        loss = graph_reconstruction_loss_weighted(
             pred_feats,
             true_feats,
             pred_counts,
             true_counts,
-            max_nodes=MAX_NODES
+            feat_weights=feat_weights,
         )
+
         total_loss += loss.item()
         all_losses.append(loss.item())
 

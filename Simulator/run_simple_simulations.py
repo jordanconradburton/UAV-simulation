@@ -52,7 +52,7 @@ def run_simulation(
     if num_sensors is None:
         num_sensors   =  random.randint(3, 20)
     if num_drones is None:
-        num_drones    = random.randint(1, 8)
+        num_drones    = random.randint(1, 8) #TODO: 0
     if region_size is None:
         region_size   = (random.randint(100, 5000), random.randint(100, 5000))
     if sensor_height is None:
