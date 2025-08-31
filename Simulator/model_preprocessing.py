@@ -4,6 +4,7 @@ import pandas as pd
 from collections import defaultdict
 from datetime import datetime
 from tqdm import tqdm
+import os
 
 def build_sensor_distances_table(db, exp_id):
     """
@@ -33,7 +34,7 @@ def export_sensor_information_to_csv(db, csv_path):
     rows = db.get_sensors()
     df = pd.DataFrame(
         rows,
-        columns=["sensor_id", "sensor_type", "sensitivity", "sinr_threshold", "freq_min", "freq_max", "sector_count"]
+        columns=["sensor_id", "sensor_type", "sensitivity", "sinr_threshold", "gain", "freq_min", "freq_max", "sector_count"]
     )
     df.to_csv(csv_path, index=False)
     print(f"Exported sensors to {csv_path}")
@@ -43,7 +44,7 @@ def export_sensor_gain_sectors_to_csv(db, csv_path):
     rows = db.get_sensor_gain_sectors()
     df = pd.DataFrame(
         rows,
-        columns=["sensor_id", "exp_id", "sector_id", "angle_start", "angle_end", "gain_db"]
+        columns=["sensor_id", "exp_id", "sector_id", "angle_start", "angle_end"]
     )
     df.to_csv(csv_path, index=False)
     print(f"Exported sensor_gain_sectors to {csv_path}")
@@ -71,6 +72,7 @@ def export_all_sensor_detection_summary(db, csv_path):
     # fetch all experiment IDs
     exp_ids = [row[0] for row in db.get_experiments()]
     print("Exporting all sensor detection summaries...")
+    os.makedirs(os.path.dirname(csv_path), exist_ok=True)
 
     with open(csv_path, 'w', newline='') as f:
         writer = csv.writer(f)
@@ -80,6 +82,7 @@ def export_all_sensor_detection_summary(db, csv_path):
             "timestamp",
             "num_detections",
             "total_power_dBm",
+            "sensor_sectors_detected",
             "drone_ids",
             "drone_positions",
             "individual_powers"
@@ -97,7 +100,7 @@ def export_all_sensor_detection_summary(db, csv_path):
             # collect detections grouped by (sensor_id, timestamp)
             det_group = defaultdict(list)
             for det in db.get_sensor_detections():
-                _, sup_id, drone_id, prx, _ = det
+                _, sup_id, drone_id, prx, _, sector = det
                 if sup_id not in up_map:
                     continue
                 sensor_id, ts = up_map[sup_id]
@@ -107,7 +110,7 @@ def export_all_sensor_detection_summary(db, csv_path):
                     " WHERE exp_id=? AND drone_id=? AND time=?",
                     (exp_id, drone_id, ts)
                 ).fetchone()
-                det_group[(sensor_id, ts)].append((drone_id, prx, pos))
+                det_group[(sensor_id, ts)].append((drone_id, prx, pos, sector))
 
             # write one row per group
             for (sensor_id, ts), entries in det_group.items():
@@ -116,12 +119,15 @@ def export_all_sensor_detection_summary(db, csv_path):
 
                 drone_ids = [e[0] for e in entries]
                 positions = [e[2] for e in entries]
+                sectors = [e[3] for e in entries]
+
                 writer.writerow([
                     exp_id,
                     sensor_id,
                     ts.isoformat(),
                     len(entries),
                     f"{total_dbm:.2f}",
+                    sectors,
                     drone_ids,
                     positions,
                     [f"{p:.2f}" for p in prx_list]

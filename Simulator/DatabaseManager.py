@@ -14,6 +14,7 @@ class DatabaseManager:
             type TEXT NOT NULL,
             sensitivity REAL,
             sinr_threshold REAL,
+            gain REAL,
             freq_min REAL,
             freq_max REAL,
             sector_count INTEGER DEFAULT 1
@@ -26,7 +27,6 @@ class DatabaseManager:
             sector_id INTEGER,
             angle_start REAL,    -- degrees, e.g. 0.0
             angle_end REAL,      -- degrees, e.g. 60.0
-            gain_db REAL,        -- dBi
             PRIMARY KEY(sensor_id, exp_id, sector_id),
             FOREIGN KEY(sensor_id) REFERENCES sensors(id),
             FOREIGN KEY (exp_id)    REFERENCES experiments(id)
@@ -67,6 +67,7 @@ class DatabaseManager:
             drone_id INTEGER,
             received_power REAL,
             received_signal_bandwidth REAL,
+            sector_detected INTEGER,
             FOREIGN KEY (sensor_up_id) REFERENCES sensor_up_time(sensor_up_id),
             FOREIGN KEY (drone_id) REFERENCES drones(id)
         );
@@ -201,18 +202,18 @@ class DatabaseManager:
         self.cursor.execute("SELECT * FROM sensors")
         return self.cursor.fetchall()
 
-    def set_sensor(self, sensor_type, sensitivity, sinr_threshold, freq_min, freq_max, sector_count=1):
+    def set_sensor(self, sensor_type, sensitivity, sinr_threshold, gain, freq_min, freq_max, sector_count=1):
         self.cursor.execute("""
-            INSERT OR REPLACE INTO sensors (type, sensitivity, sinr_threshold, freq_min, freq_max, sector_count) 
-            VALUES (?, ?, ?, ?, ?, ?)""",
-            (sensor_type, sensitivity, sinr_threshold, freq_min, freq_max, sector_count)
+            INSERT OR REPLACE INTO sensors (type, sensitivity, sinr_threshold, gain, freq_min, freq_max, sector_count) 
+            VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (sensor_type, sensitivity, sinr_threshold, gain, freq_min, freq_max, sector_count)
         )
         self.conn.commit()
         return self.cursor.lastrowid
 
     def get_sensor_info_by_experiment(self, exp_id):
         self.cursor.execute("""
-            SELECT s.id, s.type, s.sensitivity, s.sinr_threshold, s.freq_min, s.freq_max, s.sector_count
+            SELECT s.id, s.type, s.sensitivity, s.sinr_threshold, s.gain, s.freq_min, s.freq_max, s.sector_count
               FROM sensors AS s
               JOIN sensor_exp AS se 
                 ON s.id = se.sensor_id
@@ -225,12 +226,12 @@ class DatabaseManager:
         return self.cursor.fetchall()
 
     def set_sensor_gain_sector(self, sensor_id, exp_id, sector_id,
-                               angle_start, angle_end, gain_db):
+                               angle_start, angle_end):
         self.cursor.execute("""
             INSERT OR REPLACE INTO sensor_gain_sector
-                (sensor_id, exp_id, sector_id, angle_start, angle_end, gain_db)
-            VALUES (?, ?, ?, ?, ?, ?)
-        """, (sensor_id, exp_id, sector_id, angle_start, angle_end, gain_db))
+                (sensor_id, exp_id, sector_id, angle_start, angle_end)
+            VALUES (?, ?, ?, ?, ?)
+        """, (sensor_id, exp_id, sector_id, angle_start, angle_end))
         self.conn.commit()
 
     def load_sensor_patterns(self, exp_id):
@@ -238,14 +239,14 @@ class DatabaseManager:
         Returns: { sensor_id: [(start,end,gain), …] }
         """
         self.cursor.execute("""
-          SELECT sensor_id, angle_start, angle_end, gain_db
+          SELECT sensor_id, angle_start, angle_end
             FROM sensor_gain_sector
            WHERE exp_id = ?
            ORDER BY sensor_id, sector_id
         """, (exp_id,))
         patterns = {}
-        for sid, a0, a1, g in self.cursor.fetchall():
-            patterns.setdefault(sid, []).append((a0, a1, g))
+        for sid, a0, a1 in self.cursor.fetchall():
+            patterns.setdefault(sid, []).append((a0, a1))
         return patterns
 
     # Getters and Setters for Sensor Experiments
@@ -322,11 +323,13 @@ class DatabaseManager:
         """, (sensor_up_id,))
         return self.cursor.fetchall()
 
-    def set_sensor_detection(self, sensor_up_id, drone_id, received_power, received_signal_bandwidth):
+    def set_sensor_detection(self, sensor_up_id, drone_id, received_power, received_signal_bandwidth,
+                             sector_detected):
         self.cursor.execute("""
-            INSERT INTO sensor_detections (sensor_up_id, drone_id, received_power, received_signal_bandwidth)
-            VALUES (?, ?, ?, ?)
-        """, (sensor_up_id, drone_id, received_power, received_signal_bandwidth))
+            INSERT INTO sensor_detections (sensor_up_id, drone_id, received_power, received_signal_bandwidth, 
+            sector_detected)
+            VALUES (?, ?, ?, ?, ?)
+        """, (sensor_up_id, drone_id, received_power, received_signal_bandwidth, sector_detected))
         self.conn.commit()
 
     # Getters and Setters for Drones

@@ -4,6 +4,7 @@ from Simulator.simulate_environment import (setup_experiment, setup_topography, 
 from Simulator.simulate_trajectories import (generate_random_trajectories,
                                    get_earliest_and_latest_times, insert_drone_trajectories_and_frequencies)
 from Simulator.visualization_utils import visualize_simulation
+from Simulator.graph_preprocessing import *
 from Simulator.model_preprocessing import *
 
 
@@ -27,6 +28,23 @@ how is it determined? is it the range of the radio frequency band?
 7. what is a normal range of values for sensor noise?
 how does this affect the calculations?
 """
+
+def run_simulation_experiments(db, num_exp, num_drones, num_sensors, num_mountains, region_size, csv_out_path):
+
+    for i in tqdm(range(num_exp)):
+        run_simulation(db, num_sensors=num_sensors, num_drones=num_drones,
+                       num_mountains=num_mountains, region_size=region_size)
+
+    export_all_sensor_detection_summary(db, csv_out_path + "_detections.csv")
+    export_sensor_distances_to_csv(db, csv_out_path + "_sensor_distances.csv")
+    export_sensor_gain_sectors_to_csv(db, csv_out_path + "_sensor_gain_sectors.csv")
+    export_sensor_information_to_csv(db, csv_out_path + "_sensor_information.csv")
+
+def produce_graph_content(db, out_path):
+    os.makedirs(os.path.dirname(out_path), exist_ok=True)
+    export_all_graphs_to_one_file(db, out_pt=out_path + "_graphs.pt")
+    export_drone_labels(db, csv_path=out_path + "_labels.csv")
+
 
 def run_simulation(
     db,

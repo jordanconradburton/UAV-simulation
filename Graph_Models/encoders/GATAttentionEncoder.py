@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch_geometric.nn import GATv2Conv, GlobalAttention
+from torch_geometric.nn import GATv2Conv, AttentionalAggregation
 from torch_geometric.data import Batch
 
 class GATAttentionEncoder(nn.Module):
@@ -29,7 +29,7 @@ class GATAttentionEncoder(nn.Module):
             nn.ReLU(),
             nn.Linear(hidden_channels // 2, 1),
         )
-        self.pool = GlobalAttention(self.gate_nn)
+        self.pool = AttentionalAggregation(self.gate_nn)
 
         self.proj = nn.Linear(hidden_channels, embed_dim)
         self.activation = activation

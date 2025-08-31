@@ -134,13 +134,14 @@ def run_detection_simulation(db, exp_id, drone_trajectories: dict):
     sensor_positions = {s[1]: (s[3], s[4], s[5]) for s in db.get_sensors_by_exp_id(exp_id)}
 
     sensor_info = db.get_sensor_info_by_experiment(exp_id)
-    # sensor_info rows: (id, type, sens, sinr_th, freq_min, freq_max, sector_count)
+    # sensor_info rows: (id, type, sens, sinr_th, gain, freq_min, freq_max, sector_count)
 
     patterns = db.load_sensor_patterns(exp_id) # sensor angle gain patterns
-    sensor_sens = {sid: sens for sid, _, sens, _, _, _, _ in sensor_info}
-    sensor_sinr_threshold = {sid: sinr_th for sid, _, _, sinr_th, _, _, _ in sensor_info}
+    sensor_sens = {sid: sens for sid, _, sens, _, _, _, _, _ in sensor_info}
+    sensor_sinr_threshold = {sid: sinr_th for sid, _, _, sinr_th, _, _, _, _ in sensor_info}
+    sensor_gains = {sid: gain for sid, _, _, _, gain, _, _, _ in sensor_info}
     freq_ranges = {sid: (fmin, fmax)
-                   for sid, _, _, _, fmin, fmax, _ in sensor_info}
+                   for sid, _, _, _, _, fmin, fmax, _ in sensor_info}
 
     drones = _get_drone_info(db, exp_id)
     freqs = _get_drone_freqs(db, exp_id)
@@ -160,7 +161,7 @@ def run_detection_simulation(db, exp_id, drone_trajectories: dict):
             sx, sy, sz = sensor_positions[sensor_id]
             sensitivity = sensor_sens[sensor_id]
             sinr_threshold = sensor_sinr_threshold[sensor_id]
-            rx_gain = 0
+            rx_gain = sensor_gains[sensor_id]
             signal_powers = []
 
             for drone_id, dx, dy, dz in drone_positions:
@@ -169,53 +170,54 @@ def run_detection_simulation(db, exp_id, drone_trajectories: dict):
                 tx_gain = drone[3]       # transmitter antenna gain
                 bandwidth = drone[7]
                 freq_hz = freqs[(exp_id, drone_id)]
+                sector_idx = None
 
                 # Check drone frequency in sensor range
                 in_range = _drone_frequency_in_sensor_range(freq_hz, freq_ranges[sensor_id])
                 if not in_range:
                     # print(f"      → Drone {drone_id} freq {freq_hz/1e6:,.2f} MHz  outside sensor {sensor_id} range "
                     #       f"{fmin/1e6:,.2f}–{fmax/1e6:,.2f} MHz ")
-                    break
+                    continue
 
                 # Check mountain blockage.
                 mountain_blocked = _line_of_sight_blocked(sx, sy, sz, dx, dy, dz, mountain_list)
                 if mountain_blocked:
                     # print(f"      → Line of sight blocked by a mountain for sensor {sensor_id} and drone {drone_id}")
-                    break
+                    continue
 
-                # Calculate G_r according to sensor sector
                 dif_x, dif_y = dx - sx, dy - sy
                 theta = math.degrees(math.atan2(dif_y, dif_x)) % 360
 
-                for start, end, gain_db in patterns[sensor_id]:
+                for i, (start, end) in enumerate(patterns.get(sensor_id, []), start=1):
                     if start <= theta < end:
-                        rx_gain = gain_db
+                        sector_idx = i
                         break
 
                 distance = calculate_distance((dx, dy, dz), (sx, sy, sz))
                 prx = calculate_signal_power(tx_power, distance, freq_hz, tx_gain, rx_gain)
-                signal_powers.append((drone_id, prx, bandwidth))
+                signal_powers.append((drone_id, prx, bandwidth, sector_idx))
 
                 # print(f"  Drone {drone_id} position: ({dx:.1f}, {dy:.1f}, {dz:.1f})")
                 # print(f"  Sensor {sensor_id} at ({sx:.1f}, {sy:.1f}, {sz:.1f}) → Prx: {prx:.2f} dBm")
                 # print("Distance: ", distance)
 
             if not signal_powers:
-                break
+                continue
 
             lead = max(signal_powers, key=lambda x: x[1])
             prx_lead = lead[1]
             bandwidth = lead[2]
             pthermal = calculate_thermal_noise(bandwidth)
-            prx_others = [prx for drone_id, prx, _ in signal_powers if prx != prx_lead]
+            prx_others = [prx for drone_id, prx, _, _ in signal_powers if prx != prx_lead]
             sinr = calculate_sinr(prx_lead, pthermal, prx_others)
             active = is_sensor_active(sinr, sinr_threshold, prx_lead, sensitivity)
 
             if active:
-                for drone_id, prx, bandwidth in signal_powers:
+                for drone_id, prx, bandwidth, sector_idx in signal_powers:
                     if prx > sensitivity:
                         db.set_sensor_detection(sensor_up_id=sensor_up_id, drone_id=drone_id,
-                                        received_power=prx, received_signal_bandwidth=bandwidth)
+                                        received_power=prx, received_signal_bandwidth=bandwidth,
+                                                sector_detected=sector_idx)
                     #     print(f"      → Detection occurred: Sensor {sensor_id}, Drone {drone_id}")
                     # else:
                     #     print(f"      → No detection: Prx: {prx:.2f} dBm, Sensor Sensitivity: {sensitivity:.2f} dBm")

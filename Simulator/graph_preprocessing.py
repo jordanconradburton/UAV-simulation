@@ -44,21 +44,15 @@ def build_experiment_graphs(db, exp_id):
     unique_types = sorted(set(types))
     type2idx = {t:i for i,t in enumerate(unique_types)}
 
-    patterns = db.load_sensor_patterns(exp_id)
-    max_sectors = MAX_SECTORS
-
     # 1) Static node features
     static_feats = []
     for (_, sid, _, x, y, z) in sensors:
-        # each row from get_sensor_info_by_experiment: (sensor_id, type, sens, sinr_th, fmin, fmax, sector_count)
+        # each row from get_sensor_info_by_experiment: (sensor_id, type, sens, sinr_th, gain, fmin, fmax, sector_count)
         info = next(r for r in sensor_info if r[0] == sid)
-        _, type, sens, sinr_th, fmin, fmax, scount = info
+        _, type, sens, sinr_th, gain, fmin, fmax, scount = info
         ti = type2idx[type]
 
-        gains = [row[-1] for row in patterns.get(sid, [])]
-        gains += [0.0] * (max_sectors - len(gains))
-
-        static_feats.append([ti, sens, sinr_th, fmin, fmax, scount, x, y, z, *gains])
+        static_feats.append([ti, sens, sinr_th, gain, fmin, fmax, scount, x, y, z])
     x_static = torch.tensor(static_feats, dtype=torch.float)
 
     # 2) Edges are the distance between sensors
@@ -88,16 +82,25 @@ def build_experiment_graphs(db, exp_id):
     graphs = []
     for t in times:
         prx_sum = [0.0]*N
+
+        prx_sum = torch.zeros(N, dtype=torch.float)
+        sectors_mat = torch.zeros(N, MAX_SECTORS, dtype=torch.float)
+
         active_ups = [u for u in ups if u[3] == t]
         for (_, sid, sup_id, *_ ) in active_ups:
-            dets = db.get_sensor_detections_by_sensor_up_id(sup_id) # (det_id, sup_id, drone_id, rec_power, rec_bw)
+            dets = db.get_sensor_detections_by_sensor_up_id(sup_id) # (det_id, sup_id, drone_id, rec_power, rec_bw, sector)
             idx = id_to_idx[sid]
+
             prx_list = [det[3] for det in dets]
             prx_sum[idx] = sum_powers_dbm(prx_list)
-            if prx_sum[idx] == float('-inf'):
-                print("-inf detected")
-        x_dyn = torch.tensor(prx_sum, dtype=torch.float).view(N,1)
-        x = torch.cat([x_static, x_dyn], dim=1)
+
+            for det in dets:
+                sector = det[5]
+                sectors_mat[idx, sector-1] = 1.0
+
+
+        x_dyn = torch.cat([prx_sum.view(N,1), sectors_mat], dim=1)       # [N, 1+MAX_SECTORS]
+        x     = torch.cat([x_static, x_dyn], dim=1)
 
         data = Data(x=x, edge_index=edge_index, edge_attr=edge_attr)
         data.timestamp = t

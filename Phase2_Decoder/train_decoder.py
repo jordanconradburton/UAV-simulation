@@ -245,16 +245,17 @@ def evaluate_decoder_on_test(model, test_loader, device, plots_dir="Phase2_Decod
         plt.close()
 
     metrics = {
-        "avg_loss": avg_loss,
-        "count_accuracy": count_accuracy,
-        "count_mae": count_mae,
-        "count_bias": count_bias,
-        "pos_rmse": pos_rmse,
-        "pos_mae": pos_mae,
-        "axis_bias": axis_bias,
-        "axis_rmse": axis_rmse
+        "avg_loss": float(avg_loss),
+        "count_accuracy": float(count_accuracy),
+        "count_mae": float(count_mae),
+        "count_bias": float(count_bias),
+        "pos_rmse": float(pos_rmse),
+        "pos_mae": float(pos_mae),
+        "axis_bias": axis_bias.tolist(),
+        "axis_rmse": axis_rmse.tolist()
     }
 
+    os.makedirs(metrics_dir, exist_ok=True)
     timestamp = time.strftime("%Y%m%d-%H%M%S")
 
     with open(os.path.join(metrics_dir, f"decoder_test_summary_{timestamp}.json"), "w") as f:

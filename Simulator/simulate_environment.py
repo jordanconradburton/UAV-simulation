@@ -64,10 +64,12 @@ def setup_sensors(db, exp_id, region_size, num_sensors=5, height=500, sensor_typ
         sensitivity    = random.uniform(*sensitivity_range)
         sinr_threshold = random.uniform(*sinr_threshold_range)
         freq_min, freq_max = random.choice(FREQUENCY_BANDS_HZ)
-        sector_count = random.randint(1, 6)
-        # sector_count = random.choice([1, 2, 3, 6])
+        # sector_count = random.randint(1, 6)
+        sector_count = random.choice([1, 2, 3, 6])
+        sensor_gain = random.uniform(-5, 5)
 
-        sensor_id = db.set_sensor(sensor_type, sensitivity, sinr_threshold, freq_min, freq_max, sector_count)
+        sensor_id = db.set_sensor(sensor_type, sensitivity, sinr_threshold, sensor_gain,
+                                  freq_min, freq_max, sector_count)
         db.set_sensor_exp(exp_id, sensor_id, sensor_id, x, y, z)
 
         # create sensor gain sectors
@@ -126,13 +128,10 @@ def _setup_sensor_gain_sectors(db, sensor_id, exp_id, sector_count):
         angle_start = 360 * (sector_idx - 1) / sector_count
         angle_end = 360 * sector_idx / sector_count
 
-        gain_db = random.uniform(-1.0, 3.0) #TODO: verify gain range
-
         db.set_sensor_gain_sector(
             sensor_id=sensor_id,
             exp_id=exp_id,
             sector_id=sector_idx,
             angle_start=angle_start,
-            angle_end=angle_end,
-            gain_db=gain_db
+            angle_end=angle_end
         )

@@ -1,5 +1,7 @@
 from Graph_Models.Datasets import GraphSnapshotDataset as gd
-from Graph_Models.encoders import VanillaGATEncoder as enc
+# from Graph_Models.encoders import VanillaGATEncoder as enc
+# from Graph_Models.encoders import GATv2Encoder as enc
+from Graph_Models.encoders import GATAttentionEncoder as enc
 from Graph_Models import BasicGraphDecoder as dec
 from Graph_Models import BasicGraphAutoencoder as autoencoder
 from loss_functions import *
@@ -43,10 +45,15 @@ def run_encoder_pipeline(graphs_path, label_file, batch_size=16, lr=1e-3, epochs
 
     # ------ 2. Autoencoder model creation ------
     num_features = simple_dataset[0].x.size(1)
+    print("num features", num_features)
     embedding_dim = 64
 
-    encoder = enc.BasicGATEncoder(in_channels=num_features, hidden_channels=128, embed_dim=embedding_dim,
+    # encoder = enc.BasicGATEncoder(in_channels=num_features, hidden_channels=128, embed_dim=embedding_dim,
+    #                               attn_heads=4, dropout=0.2).to(device)
+    encoder = enc.GATAttentionEncoder(in_channels=num_features, hidden_channels=128, embed_dim=embedding_dim,
                                   attn_heads=4, dropout=0.2).to(device)
+    # encoder = enc.BasicGATv2Encoder(in_channels=num_features, hidden_channels=128, embed_dim=embedding_dim,
+    #                               attn_heads=4, dropout=0.2).to(device)
     decoder = dec.BasicGraphDecoder(embed_dim=embedding_dim, max_nodes=MAX_NODES, out_node_dim=num_features).to(device)
     model = autoencoder.BasicGraphAutoencoder(encoder, decoder).to(device)
 

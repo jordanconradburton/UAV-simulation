@@ -22,6 +22,8 @@ def plot_losses(train_losses, val_losses, save_path=None):
     else:
         plt.show()
 
+    plt.close()
+
 def plot_test_loss_distribution(test_losses, save_path=None):
     plt.hist(test_losses, bins=30)
     plt.xlabel('Per-Graph Loss')
