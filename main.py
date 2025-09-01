@@ -101,17 +101,17 @@ def main():
 
 
 if __name__ == '__main__':
-    db_name = '1drone_3sensors_1000exps'
+    db_name = '1drone_0mountains_1000exps'
     db = dbm.DatabaseManager(db_name=db_name + '.db')
 
     # ------ 1. Run Simulation Experiments ------
-    # num_exp = 1000
-    # csv_out_path = "Data_Files_and_Databases/Sector_Gain_Exps/" + db_name
-    # run_simulation_experiments(db, num_exp=num_exp, num_sensors=3, num_drones=1, num_mountains=0,
-    #                            region_size=(5000, 5000), csv_out_path=csv_out_path)
+    num_exp = 1000
+    csv_out_path = "Data_Files_and_Databases/Initial_Exps/" + db_name
+    run_simulation_experiments(db, num_exp=num_exp, num_sensors=None, num_drones=1, num_mountains=0,
+                               region_size=(5000, 5000), csv_out_path=csv_out_path)
 
     # ------ 2. Create Graphs from Simulations ------
-    graph_out_path = "Data_Files_and_Databases/Sector_Gain_Exps_Graphs/" + db_name
+    graph_out_path = "Data_Files_and_Databases/Initial_Exps_Graphs/" + db_name
     produce_graph_content(db, graph_out_path)
 
     db.conn.close()
