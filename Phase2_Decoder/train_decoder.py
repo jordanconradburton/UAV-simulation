@@ -118,7 +118,7 @@ def train_decoder(train_loader, val_loader, model, optimizer, device, num_epochs
         avg_val_loss = total_val_loss / len(val_loader)
         val_losses.append(avg_val_loss)
 
-        print(f"Epoch {epoch + 1:02d} | Train Loss: {avg_train_loss:.6f} | Val Loss: {avg_val_loss:.6f}")
+        print(f"\nEpoch {epoch + 1:02d} | Train Loss: {avg_train_loss:.6f} | Val Loss: {avg_val_loss:.6f}")
 
         # --- Early stopping logic ---
         if avg_val_loss < best_val_loss:

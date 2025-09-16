@@ -65,7 +65,8 @@ def setup_sensors(db, exp_id, region_size, num_sensors=5, height=500, sensor_typ
         sinr_threshold = random.uniform(*sinr_threshold_range)
         freq_min, freq_max = random.choice(FREQUENCY_BANDS_HZ)
         # sector_count = random.randint(1, 6)
-        sector_count = random.choice([1, 2, 3, 6])
+        # sector_count = random.choice([1, 2, 3, 6])
+        sector_count = 6
         sensor_gain = random.uniform(-5, 5)
 
         sensor_id = db.set_sensor(sensor_type, sensitivity, sinr_threshold, sensor_gain,

@@ -6,7 +6,8 @@ from matplotlib.patches import Wedge
 
 from datetime import datetime
 
-matplotlib.use("TkAgg")
+# matplotlib.use("TkAgg")
+matplotlib.use("Agg")   # Non-interactive backend
 
 def setup_sensors(ax, sensors, region):
 

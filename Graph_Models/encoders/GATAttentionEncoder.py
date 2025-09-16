@@ -2,7 +2,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch_geometric.nn import GATv2Conv, AttentionalAggregation
-from torch_geometric.data import Batch
 
 class GATAttentionEncoder(nn.Module):
     """
@@ -23,7 +22,7 @@ class GATAttentionEncoder(nn.Module):
         self.gat1 = GATv2Conv(in_channels, hidden_channels, heads=attn_heads, dropout=dropout, concat=False)
         self.gat2 = GATv2Conv(hidden_channels, hidden_channels, heads=attn_heads, dropout=dropout, concat=False)
 
-        # GlobalAttention needs a gate network: R^H -> R (per-node gate)
+        # Global attention needs a gate network: R^H -> R (per-node gate)
         self.gate_nn = nn.Sequential(
             nn.Linear(hidden_channels, hidden_channels // 2),
             nn.ReLU(),

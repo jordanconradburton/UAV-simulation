@@ -3,6 +3,8 @@ import torch.nn.functional as F
 from scipy.optimize import linear_sum_assignment
 import torch.nn as nn
 
+from utils import *
+
 def graph_reconstruction_loss(pred_node_feats, true_node_feats, pred_node_count_logits, true_node_counts, max_nodes):
     """
     Args:
@@ -84,3 +86,39 @@ def hungarian_match_loss(pred_positions, gt_positions):
 
     mse_loss = nn.MSELoss()(matched_pred, matched_gt)
     return mse_loss
+
+def temporal_reconstruction_loss_weighted(pred_feats_list, pred_counts_list, seq, feat_weights=None, time_weights=None):
+    """
+    pred_feats_list: list[T] of [Nmax, F]
+    pred_counts_list: list[T] of [Nmax+1]
+    seq: list[T] of PyG Data
+    feat_weights: None or 1D array/tensor of length F (same as your existing function)
+    time_weights: None or list/1D tensor of length T (optional emphasis on later steps)
+    """
+    T = len(seq)
+    losses = []
+
+    for t in range(T):
+        pred_feats_t = pred_feats_list[t].unsqueeze(0)        # [1, Nmax, F] to satisfy your function's [B,...]
+        pred_counts_t = pred_counts_list[t].unsqueeze(0)      # [1, Nmax+1]
+        true_feats_t, true_count_t = extract_graph_targets(seq[t])
+
+        # adapt to your API: expects list of true feats/counts (length B)
+        loss_t = graph_reconstruction_loss_weighted(
+            pred_node_feats=pred_feats_t,
+            true_node_feats=true_feats_t,
+            pred_node_count_logits=pred_counts_t,
+            true_node_counts=true_count_t,
+            feat_weights=feat_weights
+        )
+        if time_weights is not None:
+            w = float(time_weights[t])
+            loss_t = loss_t * w
+        losses.append(loss_t)
+
+    if time_weights is None:
+        return torch.stack(losses).mean()
+    else:
+        tw = torch.tensor(time_weights, dtype=losses[0].dtype,
+                          device=losses[0].device)
+        return (torch.stack(losses) * tw).sum() / tw.sum()

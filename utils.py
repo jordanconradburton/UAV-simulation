@@ -2,8 +2,8 @@ import ast
 import csv
 from datetime import datetime
 import torch
-from torch_geometric.data import Batch
-from torch.utils.data import random_split
+from torch_geometric.data import Batch, Data
+from torch.utils.data import random_split, Subset
 from torch_geometric.loader import DataLoader
 import matplotlib.pyplot as plt
 import numpy as np
@@ -11,6 +11,8 @@ import os
 import time
 import pandas as pd
 import json
+import random
+from tqdm import tqdm
 
 from Simulator.simulation_utils import FREQUENCY_BANDS_HZ
 from Phase2_Decoder.LabeledEmbeddingDataset import LabeledEmbeddingDataset
@@ -27,9 +29,37 @@ def create_encoder_dataloaders(dataset, train_ratio=0.7, val_ratio=0.15, batch_s
     val_loader = DataLoader(val_set, batch_size=batch_size, shuffle=False)
     test_loader = DataLoader(test_set, batch_size=batch_size, shuffle=False)
 
-    print("Dataloaders created")
+    print("Encoder dataloaders created")
 
     return train_loader, val_loader, test_loader
+
+def create_temporal_encoder_dataloaders(dataset, train_ratio=0.7, val_ratio=0.15, shuffle=True):
+    """
+       Splits by experiments, not snapshots. Each loader yields (exp_id, sequence_of_Data).
+       - Uses batch_size=1 (one sequence per step).
+       - collate keeps the sequence intact.
+    """
+    total = len(dataset)
+    train_size = int(train_ratio * total)
+    val_size = int(val_ratio * total)
+
+    indices = list(range(total))
+    random.shuffle(indices)
+    train_idx = indices[:train_size]
+    val_idx   = indices[train_size:train_size+val_size]
+    test_idx  = indices[train_size+val_size:]
+
+    train_set = Subset(dataset, train_idx)
+    val_set   = Subset(dataset, val_idx)
+    test_set  = Subset(dataset, test_idx)
+
+    train_loader = torch.utils.data.DataLoader(train_set, batch_size=1, shuffle=shuffle, collate_fn=collate_temporal)
+    val_loader   = torch.utils.data.DataLoader(val_set,   batch_size=1, shuffle=False, collate_fn=collate_temporal)
+    test_loader  = torch.utils.data.DataLoader(test_set,  batch_size=1, shuffle=False, collate_fn=collate_temporal)
+
+    print("Temporal encoder dataloaders created")
+    return train_loader, val_loader, test_loader
+
 
 def create_decoder_dataloaders(train_embeddings_file, val_embeddings_file, test_embeddings_file, batch_size=16, shuffle=True):
     train_dataset = LabeledEmbeddingDataset(train_embeddings_file)
@@ -41,7 +71,7 @@ def create_decoder_dataloaders(train_embeddings_file, val_embeddings_file, test_
     test_dataset = LabeledEmbeddingDataset(test_embeddings_file)
     test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
 
-    print("Dataloaders created")
+    print("Decoder dataloaders created")
 
     embedding_dim = torch.load(train_embeddings_file)["embeddings"].shape[1]
 
@@ -50,22 +80,59 @@ def create_decoder_dataloaders(train_embeddings_file, val_embeddings_file, test_
 
 def extract_graph_targets(data_batch):
     """
-    Assumes data_batch is a list of unbatched graphs (batch_size = 1), or a PyG `Batch` you split manually.
+    Accepts:
+      - a single Data,
+      - a Batch of graphs,
+      - or a list of Data.
     Returns:
-        - true_node_feats: list of [N_i, F] tensors
-        - true_node_counts: list of ints [N1, N2, ..., NB]
+      - true_node_feats: list of [N_i, F] tensors (on original device)
+      - true_node_counts: 1D LongTensor of shape [B] on the same device
     """
+    true_node_feats = []
+    true_node_counts = []
+
     if isinstance(data_batch, list):
         true_node_feats = [d.x for d in data_batch]
         true_node_counts = [d.num_nodes for d in data_batch]
-    else:
+
+    elif isinstance(data_batch, Batch):
         # If it's a PyG Batch object (from batch_size > 1), split it
-        from torch_geometric.data import Batch
         true_node_feats = Batch.to_data_list(data_batch)
         true_node_counts = [d.num_nodes for d in true_node_feats]
         true_node_feats = [d.x for d in true_node_feats]
 
+    elif isinstance(data_batch, Data):
+        true_node_feats  = [data_batch.x]
+        true_node_counts = [data_batch.num_nodes]
+
     return true_node_feats, true_node_counts
+
+
+def collate_temporal(samples):
+    """
+    samples is a list of length 1 of the format [(exp_id, sequence)].
+    collate_temporal simply unwraps samples from the surrounding list.
+    """
+
+    assert len(samples) == 1, "Use batch_size=1 for sequences."
+    exp_id, seq = samples[0]
+    return exp_id, seq
+
+def build_feature_weights(Fdim: int,
+                          dynamic_idx: int = -1,
+                          w_static: float = 1.0,
+                          w_dynamic: float = 1.0,
+                          device=None, dtype=torch.float):
+    """
+    Returns a 1D tensor of length Fdim.
+    All static dims get w_static and dynamic_idx gets w_dynamic.
+    """
+    fw = torch.full((Fdim,), float(w_static), device=device, dtype=dtype)
+    dyn = dynamic_idx if dynamic_idx >= 0 else (Fdim + dynamic_idx)
+    if not (0 <= dyn < Fdim):
+        raise ValueError(f"dynamic_idx {dynamic_idx} resolves to {dyn}, out of range for Fdim={Fdim}")
+    fw[dyn] = float(w_dynamic)
+    return fw
 
 def get_band_index(fmin, fmax):
     for i, (lo, hi) in enumerate(FREQUENCY_BANDS_HZ):
@@ -76,24 +143,37 @@ def get_band_index(fmin, fmax):
 def normalize_features(x):
     """
     Normalize node features tensor x. Assumes layout:
-    [type, sensitivity, sinr, fmin, fmax, sector_count, x, y, z, gains..., prx]
+    [type, sensitivity, sinr, gain, fmin, fmax, sector_count, x, y, z, prx, sectors_received*6]
+
+    Feature ranges:
+    Sensitivity: [-100, -80]
+    SINR threshold: [5, 15]
+    Fmin/Fmax: according to the frequency bands
+    Sector count: [1, 6]
+    x,y: [0, 5000] (depends on region size)
+    z: [0, 100] (depends on given sensor height)
+    Gain: [-5, 5]
+
+    Note: the 6 last features are one-hot encoded for which sector(s) received the signal,
+    and so are not normalized.
     """
     x_norm = x.clone()
 
     # Feature index map
     sens_idx = 1
     sinr_idx = 2
-    fmin_idx = 3
-    fmax_idx = 4
+    gain_idx = 3
+    fmin_idx = 4
+    fmax_idx = 5
     band_idx = fmin_idx
-    scount_idx = 5
-    x_idx, y_idx, z_idx = 6, 7, 8
-    gain_start = 9
-    prx_idx = -1  # assuming prx is last
+    scount_idx = 6
+    x_idx, y_idx, z_idx = 7, 8, 9
+    prx_idx = 10
 
     # Normalize static features
     x_norm[:, sens_idx] = (x[:, sens_idx] + 100) / 20.0 # (x-min)/(max-min)
     x_norm[:, sinr_idx] = (x[:, sinr_idx] - 5) / 10.0   # (x-min)/(max-min)
+    x_norm[:, gain_idx] = (x[:, gain_idx] + 5) / 10.0   # (x-min)/(max-min)
     x_norm[:, scount_idx] = x[:, scount_idx] / 6.0      # x/max
     x_norm[:, x_idx] = x[:, x_idx] / 5000.0             # x/max
     x_norm[:, y_idx] = x[:, y_idx] / 5000.0             # x/max
@@ -106,15 +186,11 @@ def normalize_features(x):
         band_id = get_band_index(fmin, fmax)
         x_norm[i, band_idx] = band_id / 6.0
 
-    # Drop fmax (its info is redundant now)
-    x_norm = torch.cat([x_norm[:, :fmax_idx], x_norm[:, fmax_idx+1:]], dim=1)
-
-    # Normalize gains: [-1, 3] → [0, 1]
-    gain_end = x.shape[1] - 1
-    x_norm[:, gain_start:gain_end] = (x[:, gain_start:gain_end] + 1.0) / 4.0
-
     # Normalize received power (linear method)
     x_norm[:, prx_idx] = (x[:, prx_idx] + 90) / 40.0 #TODO: check again for each dataset
+
+    # Drop fmax
+    x_norm = torch.cat([x_norm[:, :fmax_idx], x_norm[:, fmax_idx+1:]], dim=1)
 
     return x_norm
 
@@ -311,6 +387,21 @@ def load_labels(csv_path, max_drones=8):
             }
     return labels
 
+def _move_seq_to_device(seq, device):
+    """In-place: put every PyG Data in the sequence onto device."""
+    for i in range(len(seq)):
+        seq[i] = seq[i].to(device)
+    return seq
+
+def _get_count_from_data(data):
+    y = data.y
+    if y.ndim == 2 and y.size(1) == 1:
+        y = y.view(-1)  # [B]
+    elif y.ndim == 0:  # single scalar
+        y = y.unsqueeze(0)
+
+    return y
+
 def _reshape_pos_from_batch(pos_gt, num_graphs: int, max_drones: int):
     """
     PyG's Batch concatenates custom fields across graphs.
@@ -340,15 +431,10 @@ def save_embeddings_with_labels(encoder, dataloader, device, save_path, max_dron
         emb = encoder(data)                 # [B, D]
         B = emb.size(0)
 
-        # 2) counts: depending on how you stored y, batched y is often [B] or [B,1]
-        y = data.y
-        if y.ndim == 2 and y.size(1) == 1:
-            y = y.view(-1)                  # [B]
-        elif y.ndim == 0:                   # single scalar
-            y = y.unsqueeze(0)
-        assert y.numel() == B, f"y has {y.numel()} elements, expected {B}"
+        # counts
+        y = _get_count_from_data(data)
 
-        # 3) positions: fix PyG concatenation -> [B, max_drones, 3]
+        # positions: fix PyG concatenation -> [B, max_drones, 3]
         pos = data.pos_gt
         pos = _reshape_pos_from_batch(pos, num_graphs=B, max_drones=max_drones)
 
@@ -366,6 +452,43 @@ def save_embeddings_with_labels(encoder, dataloader, device, save_path, max_dron
     torch.save(out, save_path)
     print(f"✅ Saved embeddings+labels to {save_path} with shapes:",
           tuple(out['embeddings'].shape), tuple(out['counts'].shape), tuple(out['positions'].shape))
+
+
+@torch.no_grad()
+def save_temporal_embeddings_with_labels(encoder, dataloader, device, save_path, max_drones=8):
+    encoder.eval()
+    all_embeds, all_counts, all_positions = [], [], []
+
+    for seq in tqdm(dataloader, desc="[Embed]"):
+        seq = _move_seq_to_device(seq, device)
+        emb_seq = encoder(seq)
+        T, D = emb_seq.shape
+        print("T: ", T, "D: ", D)
+
+        for t in range(T):
+            data_t = seq[t]
+            emb_t = emb_seq[t].unsqueeze(0)
+            B = emb_t.size(0)
+
+            cnt_t = _get_count_from_data(data_t)
+
+            pos_t = data_t.pos_gt
+            pos_t = _reshape_pos_from_batch(pos_t, num_graphs=B, max_drones=max_drones)
+
+            all_embeds.append(emb_t.detach().cpu())
+            all_counts.append(cnt_t.detach().cpu())
+            all_positions.append(pos_t.detach().cpu())
+
+    out = {
+        "embeddings": torch.cat(all_embeds, dim=0),         # [N, D]
+        "counts":     torch.cat(all_counts, dim=0),         # [N]
+        "positions":  torch.cat(all_positions, dim=0),      # [N, max_drones, 3]
+    }
+    os.makedirs(os.path.dirname(save_path), exist_ok=True)
+    torch.save(out, save_path)
+    print(f"✅ Saved temporal embeddings+labels to {save_path} with shapes:",
+          tuple(out['embeddings'].shape), tuple(out['counts'].shape), tuple(out['positions'].shape))
+
 
 
 def sanity_check_embeddings_file(path, max_drones=8):

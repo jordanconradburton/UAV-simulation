@@ -38,7 +38,8 @@ def plot_test_loss_distribution(test_losses, save_path=None):
     else:
         plt.show()
 
-# TODO: add in save path
+    plt.close()
+
 def plot_graph_embeddings(model, dataloader, device, method='tsne', save_path=None):
     """
     Visualize graph-level embeddings using t-SNE, UMAP, or PCA.
@@ -78,3 +79,5 @@ def plot_graph_embeddings(model, dataloader, device, method='tsne', save_path=No
         print(f"Saved loss curve to {save_path}")
     else:
         plt.show()
+
+    plt.close()

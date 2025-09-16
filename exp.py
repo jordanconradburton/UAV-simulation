@@ -7,24 +7,6 @@ def set_all_seeds(seed: int = 1337):
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
 
-
-def build_feature_weights(Fdim: int,
-                          dynamic_idx: int = -1,
-                          w_static: float = 1.0,
-                          w_dynamic: float = 1.0,
-                          device=None, dtype=torch.float):
-    """
-    Returns a 1D tensor of length Fdim.
-    If `overrides` is provided (list/array of length Fdim), it is used verbatim.
-    Otherwise, all static dims get w_static and dynamic_idx gets w_dynamic.
-    """
-    fw = torch.full((Fdim,), float(w_static), device=device, dtype=dtype)
-    dyn = dynamic_idx if dynamic_idx >= 0 else (Fdim + dynamic_idx)
-    if not (0 <= dyn < Fdim):
-        raise ValueError(f"dynamic_idx {dynamic_idx} resolves to {dyn}, out of range for Fdim={Fdim}")
-    fw[dyn] = float(w_dynamic)
-    return fw
-
 def start_run(run_name: str, root="runs", config: dict=None):
     stamp = time.strftime("%Y%m%d-%H%M%S")
     path = os.path.join(root, f"{run_name}_{stamp}")

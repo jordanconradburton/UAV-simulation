@@ -2,9 +2,9 @@ from utils import *
 import argparse, os
 import Simulator.DatabaseManager as dbm
 from Simulator.run_simulations import *
-from Graph_Models.train_encoder import run_encoder_pipeline
+from Graph_Models.train_encoder import run_encoder_pipeline, run_temporal_encoder_pipeline
 from Phase2_Decoder.train_decoder import run_decoder_pipeline
-from exp import set_all_seeds, start_run, save_json, build_feature_weights
+from exp import set_all_seeds, start_run, save_json
 
 
 def cli():
@@ -101,44 +101,50 @@ def main():
 
 
 if __name__ == '__main__':
-    db_name = '1drone_0mountains_1000exps'
-    db = dbm.DatabaseManager(db_name=db_name + '.db')
-
-    # ------ 1. Run Simulation Experiments ------
-    num_exp = 1000
-    csv_out_path = "Data_Files_and_Databases/Initial_Exps/" + db_name
-    run_simulation_experiments(db, num_exp=num_exp, num_sensors=None, num_drones=1, num_mountains=0,
-                               region_size=(5000, 5000), csv_out_path=csv_out_path)
-
-    # ------ 2. Create Graphs from Simulations ------
-    graph_out_path = "Data_Files_and_Databases/Initial_Exps_Graphs/" + db_name
-    produce_graph_content(db, graph_out_path)
-
-    db.conn.close()
+    # db_name = '1drone_3sensors_6sectors_1000exps'
+    # db = dbm.DatabaseManager(db_name=db_name + '.db')
+    #
+    # # ------ 1. Run Simulation Experiments ------
+    # num_exp = 1000
+    # csv_out_path = "Data_Files_and_Databases/Sector_Gain_Exps_6_Sectors/" + db_name
+    # run_simulation_experiments(db, num_exp=num_exp, num_sensors=3, num_drones=1, num_mountains=0,
+    #                            region_size=(5000, 5000), csv_out_path=csv_out_path)
+    #
+    # # ------ 2. Create Graphs from Simulations ------
+    # graph_out_path = "Data_Files_and_Databases/Sector_Gain_Exps_6_Sectors_Graphs/" + db_name
+    # produce_graph_content(db, graph_out_path)
+    #
+    # db.conn.close()
 
     # ------ 3. Run Encoder Training Pipeline ------
-    # graphs_path = "Data_Files_and_Databases/1st_Trial_Data_Files_Graphs/1000_simple_simulations_graphs.pt"
-    # label_file = "Data_Files_and_Databases/1st_Trial_Data_Files_Graphs/1000_simple_simulations_labels.csv"
-    #
-    # model_name = "GATv2Attention_weighted_50"
-    # embeddings_save_path = "Graph_Models/outputs/embeddings/" + model_name + "/"
-    # plots_save_path = "Graph_Models/outputs/plots/" + model_name + "/"
-    # feat_weights = build_feature_weights(15, -1, 1.0, 50.0)
-    #
-    # run_encoder_pipeline(graphs_path, label_file, feat_weights=feat_weights,
-    #                      embeddings_save_path=embeddings_save_path, plots_save_path=plots_save_path)
-    #
-    # train_embeddings_path = embeddings_save_path + "train_embeddings_with_labels.pt"
-    # val_embeddings_path = embeddings_save_path + "val_embeddings_with_labels.pt"
-    # test_embeddings_path = embeddings_save_path + "test_embeddings_with_labels.pt"
-    #
-    # inspect_embeddings(train_embeddings_path, save_dir="Graph_Models/outputs/embeddings_metrics/" + model_name + "/train")
-    # inspect_embeddings(val_embeddings_path, save_dir="Graph_Models/outputs/embeddings_metrics/" + model_name + "/val")
+    graphs_path = "Data_Files_and_Databases/Sector_Gain_Exps_6_Sectors_Graphs/1drone_3sensors_6sectors_1000exps_graphs.pt"
+    label_file = "Data_Files_and_Databases/Sector_Gain_Exps_6_Sectors_Graphs/1drone_3sensors_6sectors_1000exps_labels.csv"
+
+    model_name = "EvolveGCNEncoderO"
+    save_name = model_name + "_6sectors_unweighted"
+    embeddings_save_path = "Graph_Models/outputs/embeddings/" + model_name + "/"
+    plots_save_path = "Graph_Models/outputs/plots/" + model_name + "/"
+    # feat_weights = build_feature_weights(15, -1, 1.0, 50.0) #TODO: change for new features
+
+    # run_encoder_pipeline(graphs_path, label_file, feat_weights=None, epochs=100, batch_size=1,
+    #                      embeddings_save_path=embeddings_save_path, plots_save_path=plots_save_path,
+    #                      temporal=True, model_name=model_name)
+
+    run_temporal_encoder_pipeline(graphs_path, label_file, lr=1e-3, epochs=100, feat_weights=None,
+                                  embeddings_save_path=embeddings_save_path, plots_save_path=plots_save_path,
+                                  model_name=model_name)
+
+    train_embeddings_path = embeddings_save_path + "train_embeddings_with_labels.pt"
+    val_embeddings_path = embeddings_save_path + "val_embeddings_with_labels.pt"
+    test_embeddings_path = embeddings_save_path + "test_embeddings_with_labels.pt"
+
+    inspect_embeddings(train_embeddings_path, save_dir="Graph_Models/outputs/embeddings_metrics/" + model_name + "/train")
+    inspect_embeddings(val_embeddings_path, save_dir="Graph_Models/outputs/embeddings_metrics/" + model_name + "/val")
 
     # ------ 4. Run Decoder Training Pipeline ------
-    # decoder_plots_save_path = "Phase2_Decoder/outputs/plots/" + model_name + "/"
-    # decoder_metrics_save_path = "Phase2_Decoder/outputs/metrics/" + model_name + "/"
-    #
-    # run_decoder_pipeline(train_embeddings_path, val_embeddings_path, test_embeddings_path,
-    #                      plots_save_path=decoder_plots_save_path, metrics_save_path=decoder_metrics_save_path)
-    #
+    decoder_plots_save_path = "Phase2_Decoder/outputs/plots/" + model_name + "/"
+    decoder_metrics_save_path = "Phase2_Decoder/outputs/metrics/" + model_name + "/"
+
+    run_decoder_pipeline(train_embeddings_path, val_embeddings_path, test_embeddings_path,
+                         plots_save_path=decoder_plots_save_path, metrics_save_path=decoder_metrics_save_path)
+
