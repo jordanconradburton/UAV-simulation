@@ -118,6 +118,14 @@ def collate_temporal(samples):
     exp_id, seq = samples[0]
     return exp_id, seq
 
+def normalize_adj(A):
+    """Symmetrical normalization for ASTGCN model"""
+    deg = A.sum(1)
+    deg_inv_sqrt = deg.pow(-0.5)
+    deg_inv_sqrt[deg_inv_sqrt == float('inf')] = 0
+    D_inv_sqrt = torch.diag(deg_inv_sqrt)
+    return D_inv_sqrt @ A @ D_inv_sqrt
+
 def build_feature_weights(Fdim: int,
                           dynamic_idx: int = -1,
                           w_static: float = 1.0,
@@ -455,29 +463,21 @@ def save_embeddings_with_labels(encoder, dataloader, device, save_path, max_dron
 
 
 @torch.no_grad()
-def save_temporal_embeddings_with_labels(encoder, dataloader, device, save_path, max_drones=8):
+def save_ASTGCN_embeddings_with_labels(encoder, dataloader, device, save_path, max_drones=8):
     encoder.eval()
     all_embeds, all_counts, all_positions = [], [], []
 
-    for seq in tqdm(dataloader, desc="[Embed]"):
-        seq = _move_seq_to_device(seq, device)
-        emb_seq = encoder(seq)
-        T, D = emb_seq.shape
-        print("T: ", T, "D: ", D)
+    for x_seq, A_hat, mask, label in tqdm(dataloader, desc="[Embed]"):
+        x_seq, A_hat = x_seq.to(device), A_hat.to(device)
 
-        for t in range(T):
-            data_t = seq[t]
-            emb_t = emb_seq[t].unsqueeze(0)
-            B = emb_t.size(0)
+        g_emb = encoder(x_seq, A_hat)  # [B=1, embed_dim]
 
-            cnt_t = _get_count_from_data(data_t)
+        count = label["count"].to(device)            # [1]
+        positions = label["positions"].to(device)    # [max_drones, 3] or similar
 
-            pos_t = data_t.pos_gt
-            pos_t = _reshape_pos_from_batch(pos_t, num_graphs=B, max_drones=max_drones)
-
-            all_embeds.append(emb_t.detach().cpu())
-            all_counts.append(cnt_t.detach().cpu())
-            all_positions.append(pos_t.detach().cpu())
+        all_embeds.append(g_emb.cpu())
+        all_counts.append(count.cpu())
+        all_positions.append(positions.cpu())
 
     out = {
         "embeddings": torch.cat(all_embeds, dim=0),         # [N, D]
@@ -486,9 +486,8 @@ def save_temporal_embeddings_with_labels(encoder, dataloader, device, save_path,
     }
     os.makedirs(os.path.dirname(save_path), exist_ok=True)
     torch.save(out, save_path)
-    print(f"✅ Saved temporal embeddings+labels to {save_path} with shapes:",
+    print(f"✅ Saved ASTGCN embeddings + labels to {save_path} with shapes:",
           tuple(out['embeddings'].shape), tuple(out['counts'].shape), tuple(out['positions'].shape))
-
 
 
 def sanity_check_embeddings_file(path, max_drones=8):

@@ -1,5 +1,6 @@
 import random
-from Simulator.MountainSightCalculations import can_place_sensor
+from Simulator.calculations import calculate_distance
+from Simulator.MountainSightCalculations import can_place_sensor_mountains
 from Simulator.simulation_utils import FREQUENCY_BANDS_HZ
 
 def setup_experiment(db, exp_id, test_type="circle", region_size=(1000, 1000)):
@@ -51,6 +52,8 @@ def setup_sensors(db, exp_id, region_size, num_sensors=5, height=500, sensor_typ
                   sensitivity_range=(-100, -80), sinr_threshold_range=(5, 15)):
 
     mountains = db.get_mountains_by_experiment(exp_id)
+    placed_sensors = []
+
     for _ in range(1, num_sensors+1):
         # pick x,y,z until not inside any mountain:
         while True:
@@ -58,7 +61,7 @@ def setup_sensors(db, exp_id, region_size, num_sensors=5, height=500, sensor_typ
             y = random.uniform(0, region_size[1])
             z = random.uniform(0, height)
 
-            if can_place_sensor((x, y, z), mountains):
+            if _can_place_sensor((x, y, z), mountains, placed_sensors):
                 break
 
         sensitivity    = random.uniform(*sensitivity_range)
@@ -76,7 +79,25 @@ def setup_sensors(db, exp_id, region_size, num_sensors=5, height=500, sensor_typ
         # create sensor gain sectors
         _setup_sensor_gain_sectors(db, sensor_id, exp_id, sector_count)
 
+        placed_sensors.append((x, y, z))
+
     db.conn.commit()
+
+def _can_place_sensor(point, mountain_list, placed_sensors, min_distance=100):
+    """
+    Return True if `point` is not inside any mountain and not too close to other sensors.
+    """
+    # Check against mountains
+    if not can_place_sensor_mountains(point, mountain_list):
+        return False
+
+    # Check against other sensors
+    for (sx, sy, sz) in placed_sensors:
+        dist = calculate_distance((point[0], point[1], point[2]), (sx, sy, sz))
+        if dist < min_distance:
+            return False
+
+    return True
 
 def _rects_overlap(r1, r2):
     # r = (xmin, ymin, xmax, ymax)

@@ -125,7 +125,7 @@ def segment_intersects_mountain(a, b, mountain, eps=1e-9):
     t_exit  = min(s[1] for s in slabs)
     return (t_enter <= t_exit) and (t_exit >= 0.0) and (t_enter <= 1.0)
 
-def can_place_sensor(point, mountain_list):
+def can_place_sensor_mountains(point, mountain_list):
     """
     Return True if `point` is not inside any mountain in `mountain_list`.
     mountain_list: iterable of (id, mx, my, side_length, height)

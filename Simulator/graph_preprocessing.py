@@ -51,7 +51,6 @@ def build_experiment_graphs(db, exp_id):
         info = next(r for r in sensor_info if r[0] == sid)
         _, type, sens, sinr_th, gain, fmin, fmax, scount = info
         ti = type2idx[type]
-
         static_feats.append([ti, sens, sinr_th, gain, fmin, fmax, scount, x, y, z])
     x_static = torch.tensor(static_feats, dtype=torch.float)
 
@@ -74,32 +73,31 @@ def build_experiment_graphs(db, exp_id):
     edge_index = torch.tensor(edges, dtype=torch.long).t().contiguous()
     edge_attr  = torch.tensor(attrs, dtype=torch.float)
 
-    # 3) Dynamic node features and time-dependent graphs
+    # 3) Dynamic node features over time
     ups = db.get_sensor_up_time_by_experiment(exp_id)
     # (exp_id, sensor_id, sensor_up_id, start_time, end_time, sensor_noise, received_thermal_noise, sinr, active)
     times = sorted({row[3] for row in ups})
 
     graphs = []
     for t in times:
-        prx_sum = [0.0]*N
-
-        prx_sum = torch.zeros(N, dtype=torch.float)
-        sectors_mat = torch.zeros(N, MAX_SECTORS, dtype=torch.float)
+        sectors_power = torch.zeros(N, MAX_SECTORS, dtype=torch.float)
 
         active_ups = [u for u in ups if u[3] == t]
         for (_, sid, sup_id, *_ ) in active_ups:
             dets = db.get_sensor_detections_by_sensor_up_id(sup_id) # (det_id, sup_id, drone_id, rec_power, rec_bw, sector)
             idx = id_to_idx[sid]
 
-            prx_list = [det[3] for det in dets]
-            prx_sum[idx] = sum_powers_dbm(prx_list)
+            per_sector_powers = [[] for _ in range(MAX_SECTORS)]
 
             for det in dets:
                 sector = det[5]
-                sectors_mat[idx, sector-1] = 1.0
+                per_sector_powers[sector - 1].append(det[3])
 
+            for s in range(MAX_SECTORS):
+                if per_sector_powers[s]:
+                    sectors_power[idx, s] = sum_powers_dbm(per_sector_powers[s])
 
-        x_dyn = torch.cat([prx_sum.view(N,1), sectors_mat], dim=1)       # [N, 1+MAX_SECTORS]
+        x_dyn = sectors_power
         x     = torch.cat([x_static, x_dyn], dim=1)
 
         data = Data(x=x, edge_index=edge_index, edge_attr=edge_attr)

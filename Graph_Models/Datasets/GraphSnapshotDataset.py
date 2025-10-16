@@ -38,7 +38,7 @@ class GraphSnapshotDataset(Dataset):
 
         data.y = torch.tensor([count], dtype=torch.float)
         data.pos_gt = pos_tensor
-        data.mask_gt = torch.zeros(self.max_drones)     # TODO: do we need mask_gt?
+        data.mask_gt = torch.zeros(self.max_drones)
         data.mask_gt[:count] = 1.0
 
         data.exp_id = exp_id
