@@ -1,0 +1,32 @@
+1. finish ASTGCN model implementation:
+    v graph preprocessing: padding to 20 nodes, adjacency matrix
+    v astgcn dataset
+    v astgcn encoder + pooling --> embeddings
+    - encoder metrics
+    - run model and test embeddings
+    - run Maidad's decoder on embeddings produced
+    - create graphs and baselines, analysis tables
+    - add in attention pooling --> run and analyze
+    - add in cls pooling --> run and analyze
+
+2. GMAN model implementaion:
+    - gman dataset
+    - gman encoder + pooling
+    - metrics
+    - run model and test embeddings
+
+3. run models on larger datasets (5000 experiments +)
+
+4. finish implementing CLI code so you can run all of these experiments smoothly
+
+5. change hyperparameter tuning code so that you can run from the CLI and print back the metrics and
+best hyperparameters
+
+6. implement own model of GAT layers + transformer for temporal attention
+    - look at dysat for inspiration
+    - understand how this needs to change for variable number of nodes
+    - create blocks (like in pytorch models)
+    - attention-level pooling that listens to the earlier parts of the model to understand which nodes are the more important onees
+
+
+

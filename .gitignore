@@ -1,0 +1,17 @@
+# Ignore data and experiment results
+Data_Files/
+Databases/
+Graph_Models/outputs/
+TODO
+
+# Ignore __pycache__ folders and compiled Python files
+__pycache__/
+*.pyc
+*.pyo
+
+# Ignore environment and local config files
+.env
+.venv/
+venv/
+.idea/
+.DS_Store

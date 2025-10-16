@@ -106,19 +106,19 @@ if __name__ == '__main__':
 
     # # ------ 1. Run Simulation Experiments ------
     num_exp = 5000
-    csv_out_path = "Data_Files_and_Databases/Sector_Gain_Exps_6_Sectors/" + db_name
+    csv_out_path = "Data_Files/Sector_Gain_Exps_6_Sectors/" + db_name
     run_simulation_experiments(db, num_exp=num_exp, num_sensors=3, num_drones=1, num_mountains=0,
                                region_size=(5000, 5000), csv_out_path=csv_out_path)
 
     # # ------ 2. Create Graphs from Simulations ------
-    graph_out_path = "Data_Files_and_Databases/Sector_Gain_Exps_6_Sectors_Graphs/" + db_name
+    graph_out_path = "Data_Files/Sector_Gain_Exps_6_Sectors_Graphs/" + db_name
     produce_graph_content(db, graph_out_path)
 
     db.conn.close()
 
     # ------ 3. Run Encoder Training Pipeline ------
-    # graphs_path = "Data_Files_and_Databases/Sector_Gain_Exps_6_Sectors_Graphs/1drone_3sensors_6sectors_1000exps_graphs.pt"
-    # label_file = "Data_Files_and_Databases/Sector_Gain_Exps_6_Sectors_Graphs/1drone_3sensors_6sectors_1000exps_labels.csv"
+    # graphs_path = "Data_Files/Sector_Gain_Exps_6_Sectors_Graphs/1drone_3sensors_6sectors_1000exps_graphs.pt"
+    # label_file = "Data_Files/Sector_Gain_Exps_6_Sectors_Graphs/1drone_3sensors_6sectors_1000exps_labels.csv"
     # model_name = "ASTGCN_3sensors_1drone"
     # save_name = model_name + "_6sectors"
     # embeddings_save_path = "Graph_Models/outputs/embeddings/" + model_name + "/"
