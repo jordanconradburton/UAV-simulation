@@ -6,6 +6,30 @@ class DatabaseManager:
         self.cursor = self.conn.cursor()
         self.create_tables()
 
+        # Enable write-ahead logging
+        self.cursor.execute("PRAGMA journal_mode=WAL;")
+        self.cursor.execute("PRAGMA synchronous = NORMAL;")
+        self.cursor.execute("PRAGMA temp_store = MEMORY;")
+        self.cursor.execute("PRAGMA cache_size = -64000;")  # 64MB cache
+
+        # Create performance indexes if missing
+        self._ensure_indexes()
+
+    def _ensure_indexes(self):
+        """Create all high-value indexes for scaling to 1M experiments."""
+        index_statements = [
+            "CREATE INDEX IF NOT EXISTS idx_sensor_up_time_exp_id ON sensor_up_time(exp_id);",
+            "CREATE INDEX IF NOT EXISTS idx_sensor_detections_sup_id ON sensor_detections(sensor_up_id);",
+            "CREATE INDEX IF NOT EXISTS idx_drone_exp_exp_id ON drone_exp(exp_id);",
+            "CREATE INDEX IF NOT EXISTS idx_drone_exp_time_exp_id ON drone_exp_time(exp_id);",
+            "CREATE INDEX IF NOT EXISTS idx_sensors_exp_exp_id ON sensor_exp(exp_id);",
+            "CREATE INDEX IF NOT EXISTS idx_topo_mountains_topography_id ON topo_mountains(topography_id);",
+            "CREATE INDEX IF NOT EXISTS idx_exp_env_topography_id ON exp_env(topography_id);"
+        ]
+        for stmt in index_statements:
+            self.cursor.execute(stmt)
+        self.conn.commit()
+
     def create_tables(self):
         schema_sql = """
         -- Table: Sensor Information
@@ -34,13 +58,12 @@ class DatabaseManager:
 
         -- Table: Sensor Experiments
         CREATE TABLE IF NOT EXISTS sensor_exp (
+            sensor_exp_id INTEGER PRIMARY KEY AUTOINCREMENT,
             exp_id INTEGER,
             sensor_id INTEGER,
-            sensor_exp_id INTEGER,
             x REAL,
             y REAL,
             z REAL,
-            PRIMARY KEY (sensor_exp_id),
             FOREIGN KEY (exp_id) REFERENCES experiments(id),
             FOREIGN KEY (sensor_id) REFERENCES sensors(id)
         );
@@ -74,7 +97,7 @@ class DatabaseManager:
 
         -- Table: Drones
         CREATE TABLE IF NOT EXISTS drones (
-            id INTEGER PRIMARY KEY,
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
             drone_type TEXT NOT NULL,
             drone_transmitter_power REAL,
             transmitter_antenna_gain REAL,
@@ -110,7 +133,7 @@ class DatabaseManager:
 
         -- Table: Drone Experiment Time (Drone Trajectory)
         CREATE TABLE IF NOT EXISTS drone_exp_time (
-            id INTEGER PRIMARY KEY,
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
             drone_id INTEGER,
             exp_id INTEGER,
             time TIMESTAMP,
@@ -127,7 +150,7 @@ class DatabaseManager:
 
         -- Table: Experiments
         CREATE TABLE IF NOT EXISTS experiments (
-            id INTEGER PRIMARY KEY,
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
             date TIMESTAMP NOT NULL,
             description TEXT,
             parameters TEXT
@@ -146,21 +169,21 @@ class DatabaseManager:
 
         -- Table: Topography
         CREATE TABLE IF NOT EXISTS topography (
-            id INTEGER PRIMARY KEY,
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
             x REAL,
             y REAL
         );
 
         -- Table: Environment
         CREATE TABLE IF NOT EXISTS environment (
-            id INTEGER PRIMARY KEY,
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
             disturbance REAL,
             visibility REAL
         );
 
         -- Table: Mountains
         CREATE TABLE IF NOT EXISTS mountains (
-            id INTEGER PRIMARY KEY,
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
             x REAL,
             y REAL,
             side_length REAL,
@@ -225,15 +248,6 @@ class DatabaseManager:
         self.cursor.execute("SELECT * FROM sensor_gain_sector")
         return self.cursor.fetchall()
 
-    def set_sensor_gain_sector(self, sensor_id, exp_id, sector_id,
-                               angle_start, angle_end):
-        self.cursor.execute("""
-            INSERT OR REPLACE INTO sensor_gain_sector
-                (sensor_id, exp_id, sector_id, angle_start, angle_end)
-            VALUES (?, ?, ?, ?, ?)
-        """, (sensor_id, exp_id, sector_id, angle_start, angle_end))
-        self.conn.commit()
-
     def load_sensor_patterns(self, exp_id):
         """
         Returns: { sensor_id: [(start,end,gain), …] }
@@ -258,19 +272,11 @@ class DatabaseManager:
         self.cursor.execute("SELECT * FROM sensor_exp WHERE exp_id = ?", (exp_id,))
         return self.cursor.fetchall()
 
-    def get_sensor_exp_by_exp_id_and_sensor_id(self, exp_id, sensor_id):
+    def set_sensor_exp(self, exp_id, sensor_id, x, y, z):
         self.cursor.execute("""
-            SELECT * FROM sensor_exp
-            WHERE exp_id = ?
-            AND sensor_id = ?
-        """, (exp_id, sensor_id))
-        return self.cursor.fetchall()
-
-    def set_sensor_exp(self, exp_id, sensor_id, sensor_exp_id, x, y, z):
-        self.cursor.execute("""
-            INSERT OR REPLACE INTO sensor_exp (exp_id, sensor_id, sensor_exp_id, x, y, z)
-            VALUES (?, ?, ?, ?, ?, ?)
-        """, (exp_id, sensor_id, sensor_exp_id, x, y, z))
+            INSERT INTO sensor_exp (exp_id, sensor_id, x, y, z)
+            VALUES (?, ?, ?, ?, ?)
+        """, (exp_id, sensor_id, x, y, z))
         self.conn.commit()
 
     # Getters and Setters for Sensor Up Time
@@ -321,6 +327,13 @@ class DatabaseManager:
             SELECT * FROM sensor_detections
             WHERE sensor_up_id = ?
         """, (sensor_up_id,))
+        return self.cursor.fetchall()
+
+    def get_sensor_detections_by_exp(self, exp_id):
+        self.cursor.execute("""
+            SELECT * FROM sensor_detections 
+            WHERE sensor_up_id IN (SELECT sensor_up_id FROM sensor_up_time WHERE exp_id=?)
+        """, (exp_id,))
         return self.cursor.fetchall()
 
     def set_sensor_detection(self, sensor_up_id, drone_id, received_power, received_signal_bandwidth,
@@ -408,11 +421,29 @@ class DatabaseManager:
         self.cursor.execute("SELECT * FROM experiments")
         return self.cursor.fetchall()
 
-    def set_experiment(self, exp_id, date, description, parameters):
+    def insert_experiment(self, date, description, parameters):
+        """
+        Inserts a new experiment row and returns its ID.
+        """
         self.cursor.execute(
-            """INSERT OR REPLACE INTO experiments (id, date, description, parameters) VALUES (?, ?, ?, ?)""",
-            (exp_id, date, description, parameters))
-        self.conn.commit()
+            "INSERT INTO experiments (date, description, parameters) VALUES (?, ?, ?)",
+            (date, description, parameters)
+        )
+        return self.cursor.lastrowid
+
+    def insert_topography(self, x, y):
+        self.cursor.execute(
+            "INSERT INTO topography (x, y) VALUES (?, ?)",
+            (x, y)
+        )
+        return self.cursor.lastrowid
+
+    def insert_environment(self, disturbance, visibility):
+        self.cursor.execute(
+            "INSERT INTO environment (disturbance, visibility) VALUES (?, ?)",
+            (disturbance, visibility)
+        )
+        return self.cursor.lastrowid
 
     def get_mountains_by_experiment(self, exp_id):
         query = """

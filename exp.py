@@ -1,4 +1,5 @@
 import json, os, time, random, numpy as np, torch
+from Simulator.model_preprocessing import *
 
 
 def set_all_seeds(seed: int = 1337):
@@ -25,3 +26,9 @@ def save_json(obj: dict, path: str):
 
 def save_model(model, run_dir: str, name="checkpoints/best_model.pt"):
     torch.save(model.state_dict(), os.path.join(run_dir, name))
+
+def create_outfiles(db, csv_out_path):
+    export_all_sensor_detection_summary(db, csv_out_path + "_detections.csv")
+    export_sensor_distances_to_csv(db, csv_out_path + "_sensor_distances.csv")
+    export_sensor_gain_sectors_to_csv(db, csv_out_path + "_sensor_gain_sectors.csv")
+    export_sensor_information_to_csv(db, csv_out_path + "_sensor_information.csv")

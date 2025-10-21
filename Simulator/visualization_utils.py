@@ -49,7 +49,7 @@ def setup_sensor_sectors(ax, db, exp_id, region):
     # Sensor positions
     sensors = db.get_sensors_by_exp_id(exp_id)
     for s in sensors:
-        _, sensor_id, _, sx, sy, _ = s
+        _, _, sensor_id, sx, sy, _ = s
         sector_patches = []
         # choose display radius relative to region or fixed
         radius = min(region) * 0.05
@@ -166,7 +166,7 @@ def visualize_simulation(db, exp_id, drone_trajectories, region=(1000, 1000)):
     # Set up sensors.
     sensors = db.get_sensors_by_exp_id(exp_id)
     sensor_dots, sensor_text, sensor_id_text = setup_sensors(ax, sensors, region)
-    sensors_dict = { s[1]:(s[3],s[4],s[5]) for s in sensors }
+    sensors_dict = { s[2]:(s[3],s[4],s[5]) for s in sensors }
     sector_patches = setup_sensor_sectors(ax, db, exp_id, region)
 
     # Set up mountains.

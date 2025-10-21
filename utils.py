@@ -4,7 +4,7 @@ from datetime import datetime
 import torch
 from torch_geometric.data import Batch, Data
 from torch.utils.data import random_split, Subset
-from torch_geometric.loader import DataLoader
+from torch.utils.data import DataLoader
 import matplotlib.pyplot as plt
 import numpy as np
 import os
@@ -17,7 +17,7 @@ from tqdm import tqdm
 from Simulator.simulation_utils import FREQUENCY_BANDS_HZ
 from Phase2_Decoder.LabeledEmbeddingDataset import LabeledEmbeddingDataset
 
-def create_encoder_dataloaders(dataset, train_ratio=0.7, val_ratio=0.15, batch_size=1, shuffle=True):
+def create_encoder_dataloaders(dataset, train_ratio=0.7, val_ratio=0.15, batch_size=1, shuffle=True, collate_fn=None):
     total = len(dataset)
     train_size = int(train_ratio * total)
     val_size = int(val_ratio * total)
@@ -25,39 +25,12 @@ def create_encoder_dataloaders(dataset, train_ratio=0.7, val_ratio=0.15, batch_s
 
     train_set, val_set, test_set = random_split(dataset, [train_size, val_size, test_size])
 
-    train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=shuffle)
-    val_loader = DataLoader(val_set, batch_size=batch_size, shuffle=False)
-    test_loader = DataLoader(test_set, batch_size=batch_size, shuffle=False)
+    train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=shuffle, collate_fn=collate_fn)
+    val_loader = DataLoader(val_set, batch_size=batch_size, shuffle=False, collate_fn=collate_fn)
+    test_loader = DataLoader(test_set, batch_size=batch_size, shuffle=False, collate_fn=collate_fn)
 
     print("Encoder dataloaders created")
 
-    return train_loader, val_loader, test_loader
-
-def create_temporal_encoder_dataloaders(dataset, train_ratio=0.7, val_ratio=0.15, shuffle=True):
-    """
-       Splits by experiments, not snapshots. Each loader yields (exp_id, sequence_of_Data).
-       - Uses batch_size=1 (one sequence per step).
-       - collate keeps the sequence intact.
-    """
-    total = len(dataset)
-    train_size = int(train_ratio * total)
-    val_size = int(val_ratio * total)
-
-    indices = list(range(total))
-    random.shuffle(indices)
-    train_idx = indices[:train_size]
-    val_idx   = indices[train_size:train_size+val_size]
-    test_idx  = indices[train_size+val_size:]
-
-    train_set = Subset(dataset, train_idx)
-    val_set   = Subset(dataset, val_idx)
-    test_set  = Subset(dataset, test_idx)
-
-    train_loader = torch.utils.data.DataLoader(train_set, batch_size=1, shuffle=shuffle, collate_fn=collate_temporal)
-    val_loader   = torch.utils.data.DataLoader(val_set,   batch_size=1, shuffle=False, collate_fn=collate_temporal)
-    test_loader  = torch.utils.data.DataLoader(test_set,  batch_size=1, shuffle=False, collate_fn=collate_temporal)
-
-    print("Temporal encoder dataloaders created")
     return train_loader, val_loader, test_loader
 
 
@@ -76,6 +49,30 @@ def create_decoder_dataloaders(train_embeddings_file, val_embeddings_file, test_
     embedding_dim = torch.load(train_embeddings_file)["embeddings"].shape[1]
 
     return train_loader, val_loader, test_loader, embedding_dim
+
+def split_astgcn_by_expid(dataset, train_ratio=0.7, val_ratio=0.15, shuffle=True):
+    exp_ids = list(dataset.all_graphs.keys())
+    if shuffle:
+        np.random.shuffle(exp_ids)
+
+    n_total = len(exp_ids)
+    n_train = int(train_ratio * n_total)
+    n_val   = int(val_ratio * n_total)
+
+    train_exps = set(exp_ids[:n_train])
+    val_exps   = set(exp_ids[n_train:n_train + n_val])
+    test_exps  = set(exp_ids[n_train + n_val:])
+
+    train_idx = [i for i, (exp_id, _) in enumerate(dataset.sequence_index) if exp_id in train_exps]
+    val_idx   = [i for i, (exp_id, _) in enumerate(dataset.sequence_index) if exp_id in val_exps]
+    test_idx  = [i for i, (exp_id, _) in enumerate(dataset.sequence_index) if exp_id in test_exps]
+
+    train_set = Subset(dataset, train_idx)
+    val_set   = Subset(dataset, val_idx)
+    test_set  = Subset(dataset, test_idx)
+
+    return train_set, val_set, test_set
+
 
 
 def extract_graph_targets(data_batch):
@@ -151,7 +148,7 @@ def get_band_index(fmin, fmax):
 def normalize_features(x):
     """
     Normalize node features tensor x. Assumes layout:
-    [type, sensitivity, sinr, gain, fmin, fmax, sector_count, x, y, z, prx, sectors_received*6]
+    [type, sensitivity, sinr, gain, fmin, fmax, sector_count, x, y, z, power per sector*6]
 
     Feature ranges:
     Sensitivity: [-100, -80]
@@ -162,8 +159,7 @@ def normalize_features(x):
     z: [0, 100] (depends on given sensor height)
     Gain: [-5, 5]
 
-    Note: the 6 last features are one-hot encoded for which sector(s) received the signal,
-    and so are not normalized.
+    Note: the 6 last features are the per sector signal power received by each sector.
     """
     x_norm = x.clone()
 
@@ -176,7 +172,7 @@ def normalize_features(x):
     band_idx = fmin_idx
     scount_idx = 6
     x_idx, y_idx, z_idx = 7, 8, 9
-    prx_idx = 10
+    power_start = 10
 
     # Normalize static features
     x_norm[:, sens_idx] = (x[:, sens_idx] + 100) / 20.0 # (x-min)/(max-min)
@@ -194,8 +190,11 @@ def normalize_features(x):
         band_id = get_band_index(fmin, fmax)
         x_norm[i, band_idx] = band_id / 6.0
 
-    # Normalize received power (linear method)
-    x_norm[:, prx_idx] = (x[:, prx_idx] + 90) / 40.0 #TODO: check again for each dataset
+    # Normalize received power (6 sectors) but keep 0 values (no detection) as 0
+    power_vals = x[:, power_start:]
+    mask_nonzero = power_vals != 0
+    x_norm[:, power_start:] = torch.zeros_like(power_vals)
+    x_norm[:, power_start:][mask_nonzero] = (power_vals[mask_nonzero] + 100) / 60.0
 
     # Drop fmax
     x_norm = torch.cat([x_norm[:, :fmax_idx], x_norm[:, fmax_idx+1:]], dim=1)
@@ -463,14 +462,16 @@ def save_embeddings_with_labels(encoder, dataloader, device, save_path, max_dron
 
 
 @torch.no_grad()
-def save_ASTGCN_embeddings_with_labels(encoder, dataloader, device, save_path, max_drones=8):
+def save_ASTGCN_embeddings_with_labels(encoder, dataset, device, save_path, max_drones=8):
     encoder.eval()
     all_embeds, all_counts, all_positions = [], [], []
 
-    for x_seq, A_hat, mask, label in tqdm(dataloader, desc="[Embed]"):
-        x_seq, A_hat = x_seq.to(device), A_hat.to(device)
+    for idx in tqdm(range(len(dataset)), desc="[Embed]"):
+        x_seq, edge_index, mask, label = dataset[idx]
+        x_seq, edge_index, mask = x_seq.to(device), edge_index.to(device), mask.to(device)
+        x_seq = x_seq.unsqueeze(0)
 
-        g_emb = encoder(x_seq, A_hat)  # [B=1, embed_dim]
+        g_emb = encoder(x_seq, edge_index)
 
         count = label["count"].to(device)            # [1]
         positions = label["positions"].to(device)    # [max_drones, 3] or similar
@@ -482,7 +483,7 @@ def save_ASTGCN_embeddings_with_labels(encoder, dataloader, device, save_path, m
     out = {
         "embeddings": torch.cat(all_embeds, dim=0),         # [N, D]
         "counts":     torch.cat(all_counts, dim=0),         # [N]
-        "positions":  torch.cat(all_positions, dim=0),      # [N, max_drones, 3]
+        "positions":  torch.stack(all_positions, dim=0),      # [N, max_drones, 3]
     }
     os.makedirs(os.path.dirname(save_path), exist_ok=True)
     torch.save(out, save_path)

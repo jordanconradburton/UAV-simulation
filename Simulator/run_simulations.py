@@ -29,16 +29,15 @@ how is it determined? is it the range of the radio frequency band?
 how does this affect the calculations?
 """
 
-def run_simulation_experiments(db, num_exp, num_drones, num_sensors, num_mountains, region_size, csv_out_path):
+def run_simulation_experiments(db, num_exp, num_drones, num_sensors, num_mountains, region_size,
+                               exp_offset=0):
 
     for i in tqdm(range(num_exp)):
         run_simulation(db, num_sensors=num_sensors, num_drones=num_drones,
                        num_mountains=num_mountains, region_size=region_size)
-
-    export_all_sensor_detection_summary(db, csv_out_path + "_detections.csv")
-    export_sensor_distances_to_csv(db, csv_out_path + "_sensor_distances.csv")
-    export_sensor_gain_sectors_to_csv(db, csv_out_path + "_sensor_gain_sectors.csv")
-    export_sensor_information_to_csv(db, csv_out_path + "_sensor_information.csv")
+        if (i + 1) % 200 == 0:
+            db.conn.commit()
+    db.conn.commit()
 
 def produce_graph_content(db, out_path):
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
@@ -54,18 +53,12 @@ def run_simulation(
     sensor_height=None,
     target_height=None,
     num_mountains=None,
-    num_steps=60
-):
+    num_steps=60):
     """
     Run one full experiment with optional parameters.
     Any argument left as None will be randomized.
     Only random trajectories are supported.
     """
-    # ------- assign auto-increment IDs -------
-    exp_id = db.get_next_experiment_id()
-    topo_id = db.get_next_topography_id()
-    env_id  = db.get_next_environment_id()
-
     # ------- randomize defaults -------
     if num_sensors is None:
         num_sensors   =  random.randint(3, 20)
@@ -81,9 +74,9 @@ def run_simulation(
         target_height = 500
 
     # ------- environment setup -------
-    setup_experiment(db, exp_id, region_size=region_size)
-    setup_topography(db, topo_id, region_size=region_size, num_mountains=num_mountains)
-    setup_environment_record(db, env_id, disturbance=random.uniform(0,1),
+    exp_id = setup_experiment(db, region_size=region_size)
+    topo_id = setup_topography(db, region_size=region_size, num_mountains=num_mountains)
+    env_id = setup_environment_record(db, disturbance=random.uniform(0,1),
                              visibility=random.uniform(10,100))
     link_experiment_environment(db, exp_id, topo_id, env_id)
     setup_sensors(db, exp_id, num_sensors=num_sensors, region_size=region_size, height=sensor_height)

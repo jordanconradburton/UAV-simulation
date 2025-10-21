@@ -11,7 +11,7 @@ def simulate_random_trajectory(db, exp_id, drone_id,
 
     mountains = db.get_mountains_by_experiment(exp_id)
     sensors  = db.get_sensors_by_exp_id(exp_id)
-    sensor_positions = {s[1]:(s[3],s[4],s[5]) for s in sensors}
+    sensor_positions = {s[2]:(s[3],s[4],s[5]) for s in sensors}
 
     if start_time is None:
         start_time = datetime.now()
@@ -77,7 +77,7 @@ def simulate_random_trajectory(db, exp_id, drone_id,
         elif _reject_if_too_close_to_sensors((new_x, new_y, new_z), sensor_positions, sensor_safe_distance):
             new_x, new_y, new_z = x, y, z
 
-        trajectory.append((100 * drone_id * exp_id + i, drone_id, exp_id, t, speed, x, y, z,
+        trajectory.append((drone_id, exp_id, t, speed, x, y, z,
                            new_x, new_y, new_z, current_freq))
 
         x = new_x
@@ -114,41 +114,54 @@ def extract_frequency_intervals(trajectory):
 
     intervals = []
     # Get initial frequency and start time.
-    current_freq = trajectory[0][11]
-    interval_start = trajectory[0][3]
+    current_freq = trajectory[0][10]
+    interval_start = trajectory[0][2]
 
     for i in range(1, len(trajectory)):
-        freq = trajectory[i][11]
-        timestamp = trajectory[i][3]
+        freq = trajectory[i][10]
+        timestamp = trajectory[i][2]
 
         if freq != current_freq:
-            interval_end = trajectory[i - 1][3]
+            interval_end = trajectory[i - 1][2]
             intervals.append((current_freq, interval_start, interval_end))
 
             current_freq = freq
             interval_start = timestamp
 
-    interval_end = trajectory[-1][3]
+    interval_end = trajectory[-1][2]
     intervals.append((current_freq, interval_start, interval_end))
     return intervals
 
 
 def insert_drone_trajectories_and_frequencies(db, exp_id, drone_trajectories):
 
+    exp_time_rows = []
+    freq_rows = []
+
     for drone_id, trajectory in drone_trajectories.items():
         for entry in trajectory:
-            db.set_drone_exp_time(*entry[:11])
+            exp_time_rows.append(entry[:10])
 
         freq_intervals = extract_frequency_intervals(trajectory)
-        for interval in freq_intervals:
-            freq, start_time, end_time = interval
-            db.set_drone_radio_freq(exp_id, drone_id, drone_exp_id=drone_id, radio_freq=freq,
-                                    start_time=start_time, end_time=end_time)
-    db.conn.commit()
+        for freq, start_time, end_time in freq_intervals:
+            freq_rows.append((exp_id, drone_id, drone_id, freq,
+                                    start_time, end_time))
+
+    db.cursor.executemany(
+        "INSERT INTO drone_exp_time (drone_id, exp_id, time, speed, start_x, start_y, start_z, end_x, end_y, end_z) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        exp_time_rows
+    )
+
+    db.cursor.executemany(
+        "INSERT INTO drone_radio_freq (exp_id, drone_id, drone_exp_id, radio_freq, start_time, end_time) "
+        "VALUES (?, ?, ?, ?, ?, ?)",
+        freq_rows
+    )
 
 def get_earliest_and_latest_times(drone_trajectories: dict):
-    start = min(traj[0][3] for traj in drone_trajectories.values())
-    end = max(traj[-1][3] for traj in drone_trajectories.values())
+    start = min(traj[0][2] for traj in drone_trajectories.values())
+    end = max(traj[-1][2] for traj in drone_trajectories.values())
     return start, end
 
 def _reject_if_mountain(a, b, mountains):

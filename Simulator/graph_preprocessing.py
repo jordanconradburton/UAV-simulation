@@ -35,30 +35,44 @@ def build_experiment_graphs(db, exp_id):
     """
 
     sensors = db.get_sensors_by_exp_id(exp_id)
-    sensor_info = db.get_sensor_info_by_experiment(exp_id)
-    sensor_ids = [row[1] for row in sensors]           # row = (exp_id, sensor_id, sens_exp_id, x, y, z)
-    id_to_idx = {sid: i for i, sid in enumerate(sensor_ids)}
+    sensor_info_rows = db.get_sensor_info_by_experiment(exp_id)
+    distances = db.get_sensors_distances_by_exp(exp_id)  # (exp_id, sid1, x1, y1, z1, sid2, x2, y2, z2, dist)
+    mountains = db.get_mountains_by_experiment(exp_id) # (m_id, x, y, side_length, height)
+    ups = db.get_sensor_up_time_by_experiment(exp_id)
+    # (exp_id, sensor_id, sensor_up_id, start_time, end_time, sensor_noise, received_thermal_noise, sinr, active)
+    detections = db.get_sensor_detections_by_exp(exp_id)
+
+    sensor_info = {r[0]: r for r in sensor_info_rows}  # sid → info tuple
+    id_to_idx = {s[2]: i for i, s in enumerate(sensors)}  # sid → index
+    sensor_ids = list(id_to_idx.keys())
     N = len(sensor_ids)
 
-    types = [info[1] for info in sensor_info]
-    unique_types = sorted(set(types))
-    type2idx = {t:i for i,t in enumerate(unique_types)}
+    # map sensor_up_id → list of detections
+    det_by_sup = defaultdict(list)
+    for det in detections:
+        sup_id = det[1]
+        det_by_sup[sup_id].append(det)
+
+    # group ups by timestamp
+    ups_by_time = defaultdict(list)
+    for u in ups:
+        ts = u[3]
+        ups_by_time[ts].append(u)
+    times = sorted(ups_by_time.keys())
 
     # 1) Static node features
+    type2idx = {t: i for i, t in enumerate(sorted({r[1] for r in sensor_info_rows}))}
     static_feats = []
-    for (_, sid, _, x, y, z) in sensors:
-        # each row from get_sensor_info_by_experiment: (sensor_id, type, sens, sinr_th, gain, fmin, fmax, sector_count)
-        info = next(r for r in sensor_info if r[0] == sid)
-        _, type, sens, sinr_th, gain, fmin, fmax, scount = info
-        ti = type2idx[type]
-        static_feats.append([ti, sens, sinr_th, gain, fmin, fmax, scount, x, y, z])
+    for _, _, sid, x, y, z in sensors:
+        typ, sens, sinr_th, gain, fmin, fmax, scount = sensor_info[sid][1:]
+        static_feats.append([
+            type2idx[typ], sens, sinr_th, gain, fmin, fmax, scount, x, y, z
+        ])
     x_static = torch.tensor(static_feats, dtype=torch.float)
 
     # 2) Edges are the distance between sensors
-    rows = db.get_sensors_distances_by_exp(exp_id)  # (exp_id, sid1, x1, y1, z1, sid2, x2, y2, z2, dist)
     edges, attrs = [], []
-    mountains = db.get_mountains_by_experiment(exp_id) # (m_id, x, y, side_length, height)
-    for rec in rows:
+    for rec in distances:
         _, sid1, x1, y1, z1, sid2, x2, y2, z2, dist = rec
 
         i, j = id_to_idx[sid1], id_to_idx[sid2]
@@ -74,22 +88,16 @@ def build_experiment_graphs(db, exp_id):
     edge_attr  = torch.tensor(attrs, dtype=torch.float)
 
     # 3) Dynamic node features over time
-    ups = db.get_sensor_up_time_by_experiment(exp_id)
-    # (exp_id, sensor_id, sensor_up_id, start_time, end_time, sensor_noise, received_thermal_noise, sinr, active)
-    times = sorted({row[3] for row in ups})
-
     graphs = []
     for t in times:
         sectors_power = torch.zeros(N, MAX_SECTORS, dtype=torch.float)
 
-        active_ups = [u for u in ups if u[3] == t]
-        for (_, sid, sup_id, *_ ) in active_ups:
-            dets = db.get_sensor_detections_by_sensor_up_id(sup_id) # (det_id, sup_id, drone_id, rec_power, rec_bw, sector)
+        for u in ups_by_time[t]:
+            _, sid, sup_id, *_ = u
             idx = id_to_idx[sid]
-
             per_sector_powers = [[] for _ in range(MAX_SECTORS)]
 
-            for det in dets:
+            for det in det_by_sup.get(sup_id, []):
                 sector = det[5]
                 per_sector_powers[sector - 1].append(det[3])
 
@@ -97,8 +105,7 @@ def build_experiment_graphs(db, exp_id):
                 if per_sector_powers[s]:
                     sectors_power[idx, s] = sum_powers_dbm(per_sector_powers[s])
 
-        x_dyn = sectors_power
-        x     = torch.cat([x_static, x_dyn], dim=1)
+        x = torch.cat([x_static, sectors_power], dim=1)
 
         data = Data(x=x, edge_index=edge_index, edge_attr=edge_attr)
         data.timestamp = t

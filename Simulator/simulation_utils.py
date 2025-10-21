@@ -1,5 +1,6 @@
 import random
-from datetime import timedelta
+from datetime import timedelta, datetime
+from collections import defaultdict
 
 from Simulator.calculations import *
 from Simulator.MountainSightCalculations import segment_intersects_mountain
@@ -16,16 +17,21 @@ FREQUENCY_BANDS_HZ = [
 
 def simulate_sensor_up_times(db, exp_id, start, end):
     sensors = db.get_sensors_by_exp_id(exp_id)
-    sensor_ids = [s[1] for s in sensors]
+    sensor_ids = [s[2] for s in sensors]
+    data = []
     current_time = start
+
     while current_time <= end:
+        next_time = current_time + timedelta(seconds=1)
         for sensor_id in sensor_ids:
-            db.set_sensor_up_time(
-                exp_id, sensor_id,
-                start_time=current_time, end_time=current_time + timedelta(seconds=1),
-                sensor_noise=5, received_thermal_noise_power=None, sinr=None, active=True
-            ) #TODO: what are values for sensor noise
-        current_time += timedelta(seconds=1)
+            data.append((exp_id, sensor_id, current_time, next_time, 5, None, None, True))
+        current_time = next_time
+
+    db.cursor.executemany(
+        "INSERT INTO sensor_up_time (exp_id, sensor_id, start_time, end_time, sensor_noise, "
+        "received_thermal_noise_power, sinr, active) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        data
+    )
 
 
 def create_drones(db, exp_id, num_drones,
@@ -35,7 +41,10 @@ def create_drones(db, exp_id, num_drones,
                   properties_list=("Autonomous", "Manually Controlled", "Hybrid")):
 
     drone_info = {}
-    for drone_id in range(1, num_drones + 1):
+    drone_rows = []
+    drone_exp_rows = []
+
+    for i in range(num_drones):
         transmitter_power = random.uniform(*power_range)
         # transmitter_gain = random.uniform(*gain_range)
         transmitter_gain = 0.0
@@ -45,37 +54,42 @@ def create_drones(db, exp_id, num_drones,
         fmin, fmax = random.choice(FREQUENCY_BANDS_HZ)
         bandwidth = fmax - fmin
 
-        # Store the properties in our drone_info mapping.
-        drone_info[drone_id] = {
-            "transmitter_power": transmitter_power,
-            "gain": transmitter_gain,
+        drone_rows.append((drone_type, transmitter_power, transmitter_gain, properties,
+                           fmin, fmax, bandwidth))
+
+    drone_ids = []
+    for data in drone_rows:
+        db.cursor.execute(
+            "INSERT INTO drones (drone_type, drone_transmitter_power, transmitter_antenna_gain, properties, freq_min, freq_max, bandwidth) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            data
+        )
+        drone_ids.append(db.cursor.lastrowid)
+
+    for did, (drone_type, tx_power, tx_gain, properties, fmin, fmax, bw) in zip(drone_ids, drone_rows):
+        drone_info[did] = {
+            "transmitter_power": tx_power,
+            "gain": tx_gain,
             "drone_type": drone_type,
             "properties": properties,
             "freq_range": (fmin, fmax),
-            "bandwidth": bandwidth
+            "bandwidth": bw
         }
 
-        # Insert the drone record into the database.
-        db.set_drone(
-            drone_id=drone_id,
-            drone_type=drone_type,
-            drone_transmitter_power=transmitter_power,
-            transmitter_antenna_gain=transmitter_gain,
-            properties=properties,
-            freq_min=fmin,
-            freq_max=fmax,
-            bandwidth=bandwidth
-        )
-        # Link the drone to the experiment.
-        db.set_drone_exp(exp_id, drone_id, drone_exp_id=drone_id)
-    db.conn.commit()
+    # link drones to experiment
+    drone_exp_rows = [(exp_id, did, did) for did in drone_ids]
+    db.cursor.executemany(
+        "INSERT INTO drone_exp (exp_id, drone_id, drone_exp_id) VALUES (?, ?, ?)",
+        drone_exp_rows
+    )
+
     return drone_info
 
 
 # Get sensor positions as a dictionary: sensor_id -> (x, y, z)
 def _get_sensor_positions(db, exp_id):
     sensors = db.get_sensors_by_exp_id(exp_id)
-    return {s[1]: (s[3], s[4], s[5]) for s in sensors}
+    return {s[2]: (s[3], s[4], s[5]) for s in sensors}
 
 # Get drone information as a dictionary: drone_id -> drone_info
 def _get_drone_info(db, exp_id):
@@ -105,9 +119,23 @@ def _preprocess_drone_positions(drone_trajectories):
     drone_positions_by_time = {}
     for drone_id, trajectory in drone_trajectories.items():
         for entry in trajectory:
-            _, _, _, timestamp, _, x, y, z, *_ = entry
+            _, _, timestamp, _, x, y, z, *_ = entry
             drone_positions_by_time.setdefault(timestamp, []).append((drone_id, x, y, z))
     return drone_positions_by_time
+
+def _preprocess_sensor_up_times(db, exp_id, timestamps):
+    all_up_times = db.get_sensor_up_time_by_experiment(exp_id)
+    grouped = defaultdict(list)
+
+    for ts in timestamps:
+        for row in all_up_times:
+            start_time = datetime.fromisoformat(row[3])
+            end_time = datetime.fromisoformat(row[4])
+
+            if start_time <= ts < end_time:
+                grouped[ts].append(row)
+
+    return grouped
 
 # Check if a line of sight is blocked by any mountain.
 def _line_of_sight_blocked(sx, sy, sz, dx, dy, dz, mountain_list):
@@ -131,7 +159,7 @@ def _drone_frequency_in_sensor_range(drone_frequency, sensor_range):
 
 # Main simulation function.
 def run_detection_simulation(db, exp_id, drone_trajectories: dict):
-    sensor_positions = {s[1]: (s[3], s[4], s[5]) for s in db.get_sensors_by_exp_id(exp_id)}
+    sensor_positions = {s[2]: (s[3], s[4], s[5]) for s in db.get_sensors_by_exp_id(exp_id)}
 
     sensor_info = db.get_sensor_info_by_experiment(exp_id)
     # sensor_info rows: (id, type, sens, sinr_th, gain, freq_min, freq_max, sector_count)
@@ -146,13 +174,19 @@ def run_detection_simulation(db, exp_id, drone_trajectories: dict):
     drones = _get_drone_info(db, exp_id)
     freqs = _get_drone_freqs(db, exp_id)
     mountain_list = _get_mountains(db, exp_id)
+
     drone_positions_by_time = _preprocess_drone_positions(drone_trajectories)
+    timestamps = sorted(drone_positions_by_time.keys())
+    sensor_up_times_by_time = _preprocess_sensor_up_times(db, exp_id, timestamps)
+
+    detections_to_insert = []
+    metrics_to_update = []
 
     # Main simulation loop: iterate in sorted order by timestamp.
-    for timestamp in sorted(drone_positions_by_time.keys()):
+    for timestamp in timestamps:
         # print(f"Time: {timestamp}")
         drone_positions = drone_positions_by_time[timestamp]
-        sensor_up_times = db.get_active_sensor_up_times(exp_id, timestamp)  # Only entries for this timestamp
+        sensor_up_times = sensor_up_times_by_time[timestamp]
 
         for up in sensor_up_times:
             # Unpack sensor up time entry.
@@ -215,13 +249,23 @@ def run_detection_simulation(db, exp_id, drone_trajectories: dict):
             if active:
                 for drone_id, prx, bandwidth, sector_idx in signal_powers:
                     if prx > sensitivity:
-                        db.set_sensor_detection(sensor_up_id=sensor_up_id, drone_id=drone_id,
-                                        received_power=prx, received_signal_bandwidth=bandwidth,
-                                                sector_detected=sector_idx)
+                        detections_to_insert.append((sensor_up_id, drone_id, prx, bandwidth, sector_idx))
                     #     print(f"      → Detection occurred: Sensor {sensor_id}, Drone {drone_id}")
                     # else:
                     #     print(f"      → No detection: Prx: {prx:.2f} dBm, Sensor Sensitivity: {sensitivity:.2f} dBm")
 
-                db.update_sensor_metrics(sensor_up_id=sensor_up_id, thermal_noise=pthermal, sinr=sinr, active=active)
+                metrics_to_update.append((pthermal, sinr, active, sensor_up_id))
             # else:
             #     print(f"      → No detection: Sensor active: {active}")
+
+    db.cursor.executemany(
+        "INSERT INTO sensor_detections (sensor_up_id, drone_id, received_power, "
+        "received_signal_bandwidth, sector_detected) VALUES (?, ?, ?, ?, ?)",
+        detections_to_insert
+    )
+
+    db.cursor.executemany(
+        "UPDATE sensor_up_time SET received_thermal_noise_power = ?, sinr = ?, active = ? "
+        "WHERE sensor_up_id = ?",
+        metrics_to_update
+    )

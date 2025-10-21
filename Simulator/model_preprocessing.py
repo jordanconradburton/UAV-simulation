@@ -11,7 +11,7 @@ def build_sensor_distances_table(db, exp_id):
     Computes pairwise distances among sensors in experiment exp_id and builds an SQL table.
     """
     rows = db.get_sensors_by_exp_id(exp_id)
-    sensors = [(r[1], r[3], r[4], r[5]) for r in rows]  # (sensor_id, x, y, z)
+    sensors = [(r[2], r[3], r[4], r[5]) for r in rows]  # (sensor_id, x, y, z)
 
     distances = []
     n = len(sensors)
@@ -21,10 +21,15 @@ def build_sensor_distances_table(db, exp_id):
         for j in range(i + 1, n):
             sid_j, x2, y2, z2 = sensors[j]
             d = calculate_distance((x1, y1, z1), (x2, y2, z2))
-            distances.append((sid_i, (x1, y1, z1), sid_j, (x2, y2, z2), d))
+            distances.append((exp_id, sid_i, x1, y1, z1, sid_j, x2, y2, z2, d))
 
-    for sid_i, (x1, y1, z1), sid_j, (x2, y2, z2), d in distances:
-        db.set_sensors_distances(exp_id, sid_i, x1, y1, z1, sid_j, x2, y2, z2, d)
+    db.cursor.executemany(
+        """INSERT INTO sensor_distances
+           (exp_id, sensor1_id, sensor1_x, sensor1_y, sensor1_z,
+            sensor2_id, sensor2_x, sensor2_y, sensor2_z, distance)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        distances
+    )
 
     return distances
 
@@ -89,27 +94,23 @@ def export_all_sensor_detection_summary(db, csv_path):
         ])
 
         for exp_id in tqdm(exp_ids):
-            # build up_time mapping: sensor_up_id -> (sensor_id, timestamp)
-            up_rows = db.get_sensor_up_time_by_experiment(exp_id)
-            up_map = {row[2]: (row[1],
-                               # ensure datetime
-                               (row[3] if not isinstance(row[3], str)
-                                else datetime.fromisoformat(row[3])) )
-                      for row in up_rows}
+            det_rows = db.cursor.execute("""
+                SELECT d.sensor_up_id, d.drone_id, d.received_power, d.sector_detected, s.sensor_id, s.start_time
+                  FROM sensor_detections AS d
+                  JOIN sensor_up_time AS s ON d.sensor_up_id = s.sensor_up_id
+                 WHERE s.exp_id = ?
+            """, (exp_id,)).fetchall()
 
-            # collect detections grouped by (sensor_id, timestamp)
+            drone_positions = db.cursor.execute("""
+                SELECT drone_id, time, end_x, end_y, end_z
+                  FROM drone_exp_time
+                 WHERE exp_id = ?
+            """, (exp_id,)).fetchall()
+            pos_map = {(d_id, t): (x, y, z) for d_id, t, x, y, z in drone_positions}
+
             det_group = defaultdict(list)
-            for det in db.get_sensor_detections():
-                _, sup_id, drone_id, prx, _, sector = det
-                if sup_id not in up_map:
-                    continue
-                sensor_id, ts = up_map[sup_id]
-                # lookup drone position at this timestamp
-                pos = db.cursor.execute(
-                    "SELECT end_x, end_y, end_z FROM drone_exp_time"
-                    " WHERE exp_id=? AND drone_id=? AND time=?",
-                    (exp_id, drone_id, ts)
-                ).fetchone()
+            for sensor_up_id, drone_id, prx, sector, sensor_id, ts in det_rows:
+                pos = pos_map.get((drone_id, ts))
                 det_group[(sensor_id, ts)].append((drone_id, prx, pos, sector))
 
             # write one row per group
@@ -124,7 +125,7 @@ def export_all_sensor_detection_summary(db, csv_path):
                 writer.writerow([
                     exp_id,
                     sensor_id,
-                    ts.isoformat(),
+                    ts,
                     len(entries),
                     f"{total_dbm:.2f}",
                     sectors,
