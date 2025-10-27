@@ -32,3 +32,4 @@ def create_outfiles(db, csv_out_path):
     export_sensor_distances_to_csv(db, csv_out_path + "_sensor_distances.csv")
     export_sensor_gain_sectors_to_csv(db, csv_out_path + "_sensor_gain_sectors.csv")
     export_sensor_information_to_csv(db, csv_out_path + "_sensor_information.csv")
+    export_drone_trajectories_to_csv(db, csv_out_path + "_drone_trajectories.csv")

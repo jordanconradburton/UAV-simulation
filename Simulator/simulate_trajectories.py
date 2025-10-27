@@ -6,8 +6,8 @@ from Simulator.calculations import *
 
 def simulate_random_trajectory(db, exp_id, drone_id,
                                region=(5000, 5000), height=500, num_steps=60, start_time=None,
-                               freq_range=(900e6, 5e9), change_dir_prob=0.2, change_speed_prob=0.1,
-                               change_pitch_prob=0.1, sensor_safe_distance=5):
+                               freq_range=(900e6, 5e9), change_dir_prob=0.1, change_speed_prob=0.1,
+                               change_pitch_prob=0.1, big_change_prob=0.1, sensor_safe_distance=5):
 
     mountains = db.get_mountains_by_experiment(exp_id)
     sensors  = db.get_sensors_by_exp_id(exp_id)
@@ -41,24 +41,45 @@ def simulate_random_trajectory(db, exp_id, drone_id,
 
 
     for i in range(num_steps):
+        is_anomaly = False
+        is_large_anomaly = False
+
         # if random.random() < change_freq_prob:
         #     current_freq = random.uniform(*freq_range)
-        # TODO: does drone radio frequency change randomly all the time? or is this part of the jamming section?
 
         if random.random() < change_speed_prob:
-            speed = random.uniform(5, 50)
+            big_speed = random.random() < big_change_prob
+            if big_speed:
+                speed = random.uniform(5, 50)
+                is_large_anomaly = True
+            else:
+                delta_v = random.uniform(-0.1 * speed, 0.1 * speed)
+                speed = max(5, min(50, speed + delta_v))
+
+            is_anomaly = True
 
         if random.random() < change_dir_prob:
-            delta = random.uniform(-max_turn, max_turn)
-            current_angle += delta
+            if random.random() < big_change_prob:
+                current_angle = random.uniform(0, 2 * math.pi)
+                is_large_anomaly = True
+            else:
+                delta = random.uniform(-max_turn, max_turn)
+                current_angle += delta
+
+            is_anomaly = True
 
         dx = speed * math.cos(current_angle)
         dy = speed * math.sin(current_angle)
 
-        # maybe adjust pitch
         if random.random() < change_pitch_prob:
-            dp = random.uniform(-vertical_max_turn, vertical_max_turn)
-            current_pitch += dp
+            if random.random() < big_change_prob:
+                current_pitch = random.uniform(0, 2 * math.pi)
+                is_large_anomaly = True
+            else:
+                dp = random.uniform(-vertical_max_turn, vertical_max_turn)
+                current_pitch += dp
+
+            is_anomaly = True
 
         dz = speed * math.sin(current_pitch)
 
@@ -78,7 +99,7 @@ def simulate_random_trajectory(db, exp_id, drone_id,
             new_x, new_y, new_z = x, y, z
 
         trajectory.append((drone_id, exp_id, t, speed, x, y, z,
-                           new_x, new_y, new_z, current_freq))
+                           new_x, new_y, new_z, is_anomaly, is_large_anomaly, current_freq))
 
         x = new_x
         y = new_y
@@ -114,11 +135,11 @@ def extract_frequency_intervals(trajectory):
 
     intervals = []
     # Get initial frequency and start time.
-    current_freq = trajectory[0][10]
+    current_freq = trajectory[0][-1]
     interval_start = trajectory[0][2]
 
     for i in range(1, len(trajectory)):
-        freq = trajectory[i][10]
+        freq = trajectory[i][-1]
         timestamp = trajectory[i][2]
 
         if freq != current_freq:
@@ -140,7 +161,7 @@ def insert_drone_trajectories_and_frequencies(db, exp_id, drone_trajectories):
 
     for drone_id, trajectory in drone_trajectories.items():
         for entry in trajectory:
-            exp_time_rows.append(entry[:10])
+            exp_time_rows.append(entry[:12])
 
         freq_intervals = extract_frequency_intervals(trajectory)
         for freq, start_time, end_time in freq_intervals:
@@ -148,8 +169,8 @@ def insert_drone_trajectories_and_frequencies(db, exp_id, drone_trajectories):
                                     start_time, end_time))
 
     db.cursor.executemany(
-        "INSERT INTO drone_exp_time (drone_id, exp_id, time, speed, start_x, start_y, start_z, end_x, end_y, end_z) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO drone_exp_time (drone_id, exp_id, time, speed, start_x, start_y, start_z, end_x, end_y, end_z, is_anomaly, is_large_anomaly) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         exp_time_rows
     )
 

@@ -134,3 +134,44 @@ def export_all_sensor_detection_summary(db, csv_path):
                     [f"{p:.2f}" for p in prx_list]
                 ])
     print(f"Exported sensor detection summary with ground truth to {csv_path}")
+
+
+def export_drone_trajectories_to_csv(db, csv_path):
+    """
+    Export all drone trajectories from `drone_exp_time` into a CSV file.
+
+    Columns:
+      id, exp_id, drone_id, timestamp,
+      speed,
+      start_x, start_y, start_z,
+      end_x, end_y, end_z,
+      is_anomaly, is_large_anomaly
+    """
+    print("Exporting all drone trajectories to CSV...")
+    os.makedirs(os.path.dirname(csv_path), exist_ok=True)
+    query = """
+        SELECT id, exp_id, drone_id, time, speed,
+               start_x, start_y, start_z,
+               end_x, end_y, end_z,
+               is_anomaly, is_large_anomaly
+          FROM drone_exp_time
+         ORDER BY exp_id, drone_id, time
+    """
+
+    # Fetch all trajectories at once for speed
+    rows = db.cursor.execute(query)
+
+    with open(csv_path, 'w', newline='') as f:
+        writer = csv.writer(f)
+        writer.writerow([
+            "id", "experiment_id", "drone_id", "timestamp",
+            "speed",
+            "start_x", "start_y", "start_z",
+            "end_x", "end_y", "end_z",
+            "is_anomaly", "is_large_anomaly"
+        ])
+        for row in tqdm(rows, desc="Writing trajectories"):
+            writer.writerow(row)
+
+    print(f"Exported drone trajectories to {csv_path}")
+

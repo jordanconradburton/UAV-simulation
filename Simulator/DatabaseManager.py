@@ -144,6 +144,8 @@ class DatabaseManager:
             end_x REAL,
             end_y REAL,
             end_z REAL,
+            is_anomaly BOOLEAN,
+            is_large_anomaly BOOLEAN,
             FOREIGN KEY (drone_id) REFERENCES drones(id),
             FOREIGN KEY (exp_id) REFERENCES experiments(id)
         );
@@ -395,11 +397,12 @@ class DatabaseManager:
         self.cursor.execute("SELECT * FROM drone_exp_time")
         return self.cursor.fetchall()
 
-    def set_drone_exp_time(self, id, drone_id, exp_id, time, speed, start_x, start_y, start_z, end_x, end_y, end_z):
+    def set_drone_exp_time(self, id, drone_id, exp_id, time, speed, start_x, start_y, start_z, end_x, end_y, end_z,
+                           is_anomaly, is_large_anomaly):
         self.cursor.execute("""
-            INSERT OR REPLACE INTO drone_exp_time (id, drone_id, exp_id, time, speed, start_x, start_y, start_z, end_x, end_y, end_z)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (id, drone_id, exp_id, time, speed, start_x, start_y, start_z, end_x, end_y, end_z))
+            INSERT OR REPLACE INTO drone_exp_time (id, drone_id, exp_id, time, speed, start_x, start_y, start_z, end_x, end_y, end_z, is_anomaly, is_large_anomaly)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (id, drone_id, exp_id, time, speed, start_x, start_y, start_z, end_x, end_y, end_z, is_anomaly, is_large_anomaly))
         self.conn.commit()
 
     def get_drone_exp_time_by_exp_id(self, exp_id):

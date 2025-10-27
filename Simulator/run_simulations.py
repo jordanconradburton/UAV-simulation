@@ -29,8 +29,7 @@ how is it determined? is it the range of the radio frequency band?
 how does this affect the calculations?
 """
 
-def run_simulation_experiments(db, num_exp, num_drones, num_sensors, num_mountains, region_size,
-                               exp_offset=0):
+def run_simulation_experiments(db, num_exp, num_drones, num_sensors, num_mountains, region_size):
 
     for i in tqdm(range(num_exp)):
         run_simulation(db, num_sensors=num_sensors, num_drones=num_drones,
@@ -102,7 +101,7 @@ def run_simulation(
     run_detection_simulation(db, exp_id, trajectories)
 
     # ------- visualize -------
-    # visualize_simulation(db, exp_id, trajectories, region=region_size)
+    # ani = visualize_simulation(db, exp_id, trajectories, region=region_size)
 
     # ------- tables for model preprocessing -------
     build_sensor_distances_table(db, exp_id)

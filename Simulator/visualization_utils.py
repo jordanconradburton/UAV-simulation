@@ -7,7 +7,7 @@ from matplotlib.patches import Wedge
 from datetime import datetime
 
 # matplotlib.use("TkAgg")
-matplotlib.use("Agg")   # Non-interactive backend
+# matplotlib.use("Agg")   # Non-interactive backend
 
 def setup_sensors(ax, sensors, region):
 
@@ -148,7 +148,7 @@ def build_detection_map(db, exp_id):
     detection_map = {}
     for det in db.get_sensor_detections():
         # det: (detection_id, sensor_up_id, drone_id, ...)
-        _, sup_id, drone_id, _, _ = det
+        _, sup_id, drone_id, _, _, _ = det
         if sup_id in sensor_up_map:
             sensor_id, ts = sensor_up_map[sup_id]
             detection_map.setdefault(ts, []).append((sensor_id, drone_id))
@@ -167,7 +167,7 @@ def visualize_simulation(db, exp_id, drone_trajectories, region=(1000, 1000)):
     sensors = db.get_sensors_by_exp_id(exp_id)
     sensor_dots, sensor_text, sensor_id_text = setup_sensors(ax, sensors, region)
     sensors_dict = { s[2]:(s[3],s[4],s[5]) for s in sensors }
-    sector_patches = setup_sensor_sectors(ax, db, exp_id, region)
+    # sector_patches = setup_sensor_sectors(ax, db, exp_id, region)
 
     # Set up mountains.
     mountain_markers = setup_mountains(ax, db, exp_id, region)
@@ -195,7 +195,7 @@ def visualize_simulation(db, exp_id, drone_trajectories, region=(1000, 1000)):
             if frame >= len(traj):
                 continue  # skip if frame exceeds drone's trajectory
 
-            _, _, _, timestamp, _, x, y, z, *_ = traj[frame]
+            _, _, timestamp, _, x, y, z, *_ = traj[frame]
             drone_dots[drone_id].set_data([x], [y])
 
             drone_text[drone_id].set_position((x, y + 100))
@@ -225,8 +225,8 @@ def visualize_simulation(db, exp_id, drone_trajectories, region=(1000, 1000)):
         all_artists.extend(sensor_text.values())
         all_artists.extend(mountain_markers)
         all_artists.extend(detection_lines)
-        for patches in sector_patches.values():
-            all_artists += patches
+        # for patches in sector_patches.values():
+        #     all_artists += patches
 
         return all_artists
 
@@ -241,3 +241,4 @@ def visualize_simulation(db, exp_id, drone_trajectories, region=(1000, 1000)):
     plt.ylabel("Y (m)")
 
     plt.show(block=True)  # Keep the animation running in PyCharm
+    return ani

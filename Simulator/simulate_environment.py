@@ -64,7 +64,7 @@ def setup_sensors(db, exp_id, region_size, num_sensors=5, height=500, sensor_typ
             y = random.uniform(0, region_size[1])
             z = random.uniform(0, height)
 
-            if _can_place_sensor((x, y, z), mountains, placed_sensors):
+            if _can_place_sensor((x, y, z), mountains, placed_sensors, min_distance=1000):
                 break
 
         sensitivity    = random.uniform(*sensitivity_range)
@@ -162,7 +162,7 @@ def _setup_mountains(db, num_mountains, region_size):
         mountains
     )
 
-    start_id = db.cursor.lastrowid - len(mountains) + 1
+    start_id = db.cursor.lastrowid - len(mountains) + 1 #TODO: there is a bug here
     mountain_ids = list(range(start_id, start_id + len(mountains)))
 
     return mountain_ids
