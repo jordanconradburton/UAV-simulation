@@ -28,7 +28,7 @@ python -m uav_sim --help
 ```
 
 Requires Python 3.9+. The simulator is CPU-only — it never moves a tensor to a
-device — so the CPU build of PyTorch is sufficient and much smaller.
+device — so the CPU build of PyTorch is sufficient.
 
 ## Quickstart
 
@@ -88,9 +88,8 @@ or the vertical speed (climb rate, ±10 m/s), each with a fixed probability and
 by a bounded amount. A drone that reaches the ground climbs back up.
 
 **Time of arrival.** Every detection also records when the signal arrived, for
-use by a TDOA solver (none is included). Sensors are modeled as
-GPS-disciplined, so clock skew is corrected away and what remains is a small
-per-sensor offset:
+use by an external TDOA solver. Sensors are modeled as GPS-disciplined, so clock 
+skew is corrected away and what remains is a small per-sensor offset:
 
     toa = emission_offset + distance / c + clock_offset + noise
 
@@ -164,7 +163,7 @@ Each azimuth block is always 6 columns wide. A sensor with fewer sectors
 rest zero, so every experiment in a dataset has the same width. The width
 changes only when a block is switched off (`--no-elevation-sectors`,
 `--no-sector-angle-centers`, `--no-elevation-angle-centers`) — see
-`uav_sim/schema.py`, whose `layout()` computes the blocks for any
+`schema.py`, whose `layout()` computes the blocks for any
 configuration.
 
 ### Tables
@@ -181,49 +180,6 @@ configuration.
 | `drone_information.csv` | drone — transmit power, antenna gain, band, bandwidth |
 | `toa_measurements.csv` | detection — sensor position, measured time of arrival, and its ground-truth parts (emission time, flight time, clock offset, drone position) |
 
-### Reading a dataset
-
-`examples/read_dataset.py` is a short worked example of loading a dataset and
-seeing how its parts line up. Point it at a dataset directory:
-
-```bash
-python examples/read_dataset.py data/clean
-```
-
-It opens the first experiment of the first shard and prints the graph tensor's
-shape, the sensors that detected the drone at the first timestep (with power,
-azimuth bearing and elevation bin), the matching ground truth from
-`labels.csv`, and the columns of `sensor_detection_summary.csv`. On the
-Quickstart dataset (`--experiments 100 --seed 0`) it prints:
-
-```
-data/clean: 100 experiments in 1 shard(s)
-
-experiment 1 of shard_000: 17 timesteps
-  node features (10, 34)   edges (2, 90)
-  sensor 0 sits at [2102.85791015625, 1294.583740234375, 51.127471923828125]
-  8 of 10 sensors detected the drone
-    sensor 0:  -73.63 dBm  bearing ~330.0 deg  elevation bin 1
-    sensor 1:  -83.44 dBm  bearing ~330.0 deg  elevation bin 1
-    sensor 2:  -83.79 dBm  bearing ~270.0 deg  elevation bin 1
-    sensor 4:  -73.40 dBm  bearing ~ 30.0 deg  elevation bin 2
-    sensor 5:  -77.95 dBm  bearing ~270.0 deg  elevation bin 1
-    sensor 7:  -83.12 dBm  bearing ~ 30.0 deg  elevation bin 1
-    sensor 8:  -88.46 dBm  bearing ~270.0 deg  elevation bin 1
-    sensor 9:  -82.31 dBm  bearing ~270.0 deg  elevation bin 1
-
-  ground truth at 2026-10-13T12:49:29.701976: (4079.6, 503.0, 731.8) m, transmitting 14.4 dBm
-
-  sensor_detection_summary.csv: 42,865 rows, columns ['experiment_id', 'sensor_id',
-  'timestamp', 'num_detections', 'azimuth_sector_powers_dBm', 'elevation_bin_powers_dBm',
-  'sensor_sectors_detected', 'drone_ids', 'drone_positions', 'individual_powers',
-  'sensor_phi_sectors_detected']
-```
-
-Everything except the timestamp is fixed by the seed. Timestamps record when
-the dataset was generated.
-
----
 
 ## Commands
 
@@ -294,7 +250,7 @@ single-drone experiment, occlusion enters the recorded data as a pure **mask**:
 a blocked line of sight deletes a detection, and a blocked sensor pair deletes
 an edge. Nothing is ever attenuated, moved, or added. The one conditioning this
 introduces (only mountains that would not have deflected the drone are drawn)
-is described in `uav_sim/variants/mountain_sampling.py`.
+is described in `variants/mountain_sampling.py`.
 
 Mountains are sampled with an importance correction, because the naive approach
 is measurably biased: in the true generative order mountains are placed first
@@ -349,27 +305,21 @@ are recorded in `manifest.json` so a dataset always carries its own recipe.
 The variant tools are deterministic too, keyed on the source dataset — any
 shard can be regenerated in isolation and will match.
 
-## Tests
-
-```bash
-python -m unittest discover -s tests -t .
-```
-
-168 tests, about thirty seconds, no test dependencies beyond the standard library.
-They cover the link budget against hand-worked values, mountain geometry
-including every boundary case, end-to-end generation across the option matrix,
-and the invariants each variant tool claims to preserve.
-
 ## Layout
 
 ```
-uav_sim/
+uav_sim/            installed as the `uav_sim` package (see pyproject.toml)
+├── pyproject.toml    packaging: name, dependencies, the `uav-sim` console script
+├── requirements.txt  dependency floors, for use without installing the package
+├── __init__.py       package docstring and __version__
+├── __main__.py       lets `python -m uav_sim` run the CLI
 ├── cli.py            the command line
 ├── generate.py       parameters -> dataset on disk, with verification
 ├── layout.py         the on-disk shape of a dataset, in one place
 ├── errors.py         the package's exception types
 ├── schema.py         the node-feature column layout and label list length
 ├── core/             the simulator
+│   ├── __init__.py
 │   ├── physics.py        Friis, thermal noise, SINR, time of arrival
 │   ├── mountains.py      mountain geometry and occlusion
 │   ├── environment.py    region, terrain and sensor placement
@@ -380,8 +330,11 @@ uav_sim/
 │   ├── graph_export.py   database -> graph tensors
 │   └── csv_export.py     database -> flat tables
 └── variants/         post-processing that derives a dataset from a dataset
+    ├── __init__.py
     ├── elevation_schemes.py  the five elevation boundary schemes
-    ├── rebin.py              re-sectorise elevation bins
+    ├── rebin.py              re-sectorise elevation bins; calls the two below
+    ├── rebin_csv.py              ...the flat-CSV half of that rebinning
+    ├── rebin_graphs.py           ...the graph-tensor half of that rebinning
     ├── inject_mountains.py   add terrain occlusion
     ├── mountain_sampling.py  draw those mountains, and what they block
     └── inject_noise.py       add receiver noise
