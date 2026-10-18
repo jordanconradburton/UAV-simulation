@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "uav_sim"
+version = "1.0.0"
+description = "A simulator for RF sensor networks localizing airborne targets."
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "numpy>=1.24",
+    "pandas>=2.0",
+    "torch>=2.0",
+    "torch-geometric>=2.4",
+    "tqdm>=4.60",
+]
+
+[project.scripts]
+uav-sim = "uav_sim.cli:main"
+
+[tool.setuptools]
+packages = ["uav_sim", "uav_sim.core", "uav_sim.variants"]
+
+[tool.setuptools.package-dir]
+uav_sim = "."

@@ -1,0 +1,16 @@
+# Runtime dependencies for the simulator.
+#
+# Versions are lower bounds, not pins: these are the oldest releases the code
+# is known to work with, and nothing here depends on a recent API. The versions
+# it was developed and tested against are listed in the right-hand column.
+#
+#                                                    tested against
+numpy>=1.24                                        # 2.2.6
+pandas>=2.0                                        # 2.3.2
+torch>=2.0                                         # 2.3.0+cu121
+torch-geometric>=2.4                               # 2.6.1
+tqdm>=4.60                                         # 4.67.1
+
+# torch is listed without a CUDA variant on purpose. The simulator is entirely
+# CPU-bound — it never moves a tensor to a device — so the CPU build is
+# sufficient and much smaller.
